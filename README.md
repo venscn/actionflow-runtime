@@ -84,6 +84,7 @@ npm run example:basic
 
 - [Architecture](docs/architecture.md)
 - [Specification](docs/spec.md)
+- [State Persistence Design](docs/state-persistence-design.md)
 
 ## Facade Example
 

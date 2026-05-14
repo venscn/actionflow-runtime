@@ -133,7 +133,7 @@ Current action definitions include `sideEffects: string[]`. The runtime does not
 ## Extension Directions
 
 - **async action**: add external event recovery for waiting async actions.
-- **state persistence**: persist FlowRun, ActionRun, node state, outputs, and errors outside memory.
+- **state persistence**: persist FlowRun, ActionRun, node state, outputs, and errors outside memory. See [State Persistence Design](state-persistence-design.md) for a future design; FileStateStore, SQLiteStateStore, and durable recovery are not implemented yet.
 - **package manifest**: define metadata for action bundles, versions, side effects, and compatibility.
 - **worker action**: run actions in isolated workers or external processes.
 - **event trigger**: currently a descriptive structure, validator, and in-memory registry only; future work can connect it to an event bus and waiting-action recovery.
