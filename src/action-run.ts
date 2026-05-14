@@ -7,14 +7,14 @@ export function createActionRun(params: {
   input?: JsonValue;
   status?: ActionStatus;
 }): ActionRunRecord {
-  return {
+  return cleanActionRunRecord({
     id: params.id,
     runId: params.id,
     actionId: params.actionId,
     actionVersion: params.actionVersion,
     input: params.input,
     status: params.status ?? "ready"
-  };
+  });
 }
 
 export async function runActionOnce(params: {
@@ -23,62 +23,62 @@ export async function runActionOnce(params: {
   input?: unknown;
   context: ActionContext;
 }): Promise<ActionRunRecord> {
-  const baseRun: ActionRunRecord = {
+  const baseRun = cleanActionRunRecord({
     id: params.runId,
     runId: params.runId,
     actionId: params.action.id,
     actionVersion: params.action.version,
     input: params.input,
     status: "running"
-  };
+  });
 
   if (params.action.mode !== "instant") {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error: new Error(`Unsupported action mode for runActionOnce: ${params.action.mode}`)
-    };
+    });
   }
 
   if (!params.action.run) {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error: new Error(`Instant action is missing run(): ${params.action.id}@${params.action.version}`)
-    };
+    });
   }
 
   try {
     const result = await params.action.run(params.input, params.context);
 
     if (result.type === "done") {
-      return {
+      return cleanActionRunRecord({
         ...baseRun,
         status: "done",
         output: result.output
-      };
+      });
     }
 
     if (result.type === "failed") {
-      return {
+      return cleanActionRunRecord({
         ...baseRun,
         status: "failed",
         error: result.error
-      };
+      });
     }
 
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       state: "state" in result ? result.state : undefined,
       error: new Error(`Unsupported result type for instant action: ${result.type}`)
-    };
+    });
   } catch (error) {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error
-    };
+    });
   }
 }
 
@@ -88,71 +88,71 @@ export async function runAsyncActionOnce(params: {
   input?: unknown;
   context: ActionContext;
 }): Promise<ActionRunRecord> {
-  const baseRun: ActionRunRecord = {
+  const baseRun = cleanActionRunRecord({
     id: params.runId,
     runId: params.runId,
     actionId: params.action.id,
     actionVersion: params.action.version,
     input: params.input,
     status: "running"
-  };
+  });
 
   if (params.action.mode !== "async") {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error: new Error(`Unsupported action mode for runAsyncActionOnce: ${params.action.mode}`)
-    };
+    });
   }
 
   if (!params.action.run) {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error: new Error(`Async action is missing run(): ${params.action.id}@${params.action.version}`)
-    };
+    });
   }
 
   try {
     const result = await params.action.run(params.input, params.context);
 
     if (result.type === "done") {
-      return {
+      return cleanActionRunRecord({
         ...baseRun,
         status: "done",
         output: result.output
-      };
+      });
     }
 
     if (result.type === "waiting") {
-      return {
+      return cleanActionRunRecord({
         ...baseRun,
         status: "waiting",
         state: result.state,
         waitReason: result.reason
-      };
+      });
     }
 
     if (result.type === "failed") {
-      return {
+      return cleanActionRunRecord({
         ...baseRun,
         status: "failed",
         error: result.error
-      };
+      });
     }
 
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       state: result.state,
       error: new Error("Unsupported result type for async action: yield")
-    };
+    });
   } catch (error) {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error
-    };
+    });
   }
 }
 
@@ -161,35 +161,35 @@ export async function resumeActionRun(params: {
   action: ActionDefinition;
   context: ActionContext;
 }): Promise<ActionRunRecord> {
-  const baseRun: ActionRunRecord = {
+  const baseRun = cleanActionRunRecord({
     ...params.run,
     actionId: params.action.id,
     actionVersion: params.action.version,
     status: "running"
-  };
+  });
 
   if (params.action.mode !== "sliceable") {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error: new Error(`Unsupported action mode for resumeActionRun: ${params.action.mode}`)
-    };
+    });
   }
 
   if (!params.action.start) {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error: new Error(`Sliceable action is missing start(): ${params.action.id}@${params.action.version}`)
-    };
+    });
   }
 
   if (!params.action.resume) {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error: new Error(`Sliceable action is missing resume(): ${params.action.id}@${params.action.version}`)
-    };
+    });
   }
 
   try {
@@ -197,42 +197,46 @@ export async function resumeActionRun(params: {
     const result = await params.action.resume(state, params.context);
 
     if (result.type === "yield") {
-      return {
+      return cleanActionRunRecord({
         ...baseRun,
         status: "ready",
         state: result.state,
         waitReason: undefined
-      };
+      });
     }
 
     if (result.type === "done") {
-      return {
+      return cleanActionRunRecord({
         ...baseRun,
         status: "done",
         output: result.output,
         waitReason: undefined
-      };
+      });
     }
 
     if (result.type === "waiting") {
-      return {
+      return cleanActionRunRecord({
         ...baseRun,
         status: "waiting",
         state: result.state,
         waitReason: result.reason
-      };
+      });
     }
 
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error: result.error
-    };
+    });
   } catch (error) {
-    return {
+    return cleanActionRunRecord({
       ...baseRun,
       status: "failed",
       error
-    };
+    });
   }
+}
+
+function cleanActionRunRecord(record: ActionRunRecord): ActionRunRecord {
+  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined)) as ActionRunRecord;
 }

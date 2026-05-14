@@ -262,6 +262,22 @@ describe("resumeActionRun", () => {
     expect(run.state).toEqual({ count: 1 });
   });
 
+  it("omits undefined optional fields after yield", async () => {
+    const action = createCounterAction(2);
+    const initialRun = createActionRun({ id: "run-1", actionId: action.id, input: 0 });
+
+    const run = await resumeActionRun({
+      run: initialRun,
+      action,
+      context: createContext()
+    });
+
+    expect(run.status).toBe("ready");
+    expect(Object.prototype.hasOwnProperty.call(run, "output")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(run, "error")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(run, "waitReason")).toBe(false);
+  });
+
   it("finishes after multiple resumes", async () => {
     const action = createCounterAction(2);
     const initialRun = createActionRun({ id: "run-1", actionId: action.id, input: 0 });

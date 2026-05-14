@@ -13,7 +13,8 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "example:basic": "tsx examples/basic-parallel.ts",
-    "example:file-store": "tsx examples/file-state-store-restore.ts"
+    "example:file-store": "tsx examples/file-state-store-restore.ts",
+    "example:file-store-resume": "tsx examples/file-state-store-resume.ts"
   },
   "keywords": [
     "workflow",

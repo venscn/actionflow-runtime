@@ -79,6 +79,7 @@ npm install
 npm test
 npm run example:basic
 npm run example:file-store
+npm run example:file-store-resume
 ```
 
 ## Documentation
@@ -124,6 +125,14 @@ npm run example:file-store
 ```
 
 This example demonstrates local JSON record reload only, not durable recovery or event recovery.
+
+Run FileStateStore resume example:
+
+```sh
+npm run example:file-store-resume
+```
+
+This demonstrates local reload and explicit tick continuation for a yielded sliceable action; it is still not durable recovery or event recovery.
 
 ## Basic Parallel Example
 

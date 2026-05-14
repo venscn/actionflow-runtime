@@ -212,6 +212,41 @@ describe("ActionFlowRuntime", () => {
     expect(restored.actionRuns["node-1"]?.output).toBe("ok");
   });
 
+  it("persists and resumes a yielded sliceable run through FileStateStore", async () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "actionflow-runtime-sliceable-"));
+    tempDirs.push(rootDir);
+    const firstRuntime = new ActionFlowRuntime({
+      stateStore: new FileStateStore({ rootDir })
+    });
+
+    firstRuntime.registerAction(createCounterAction(2));
+    firstRuntime.registerFlow(createFlowWithNumberInput("flow.count", "counter", 0));
+
+    const initialRun = firstRuntime.createRun("flow.count", "flow-run-1");
+    const yieldedRun = await firstRuntime.tick(initialRun, "flow.count");
+
+    expect(yieldedRun.status).toBe("running");
+    expect(firstRuntime.store.getActionRun("flow-run-1:node-1")).toMatchObject({
+      status: "ready",
+      state: { count: 1 }
+    });
+
+    const secondRuntime = new ActionFlowRuntime({
+      stateStore: new FileStateStore({ rootDir })
+    });
+    secondRuntime.registerAction(createCounterAction(2));
+    secondRuntime.registerFlow(createFlowWithNumberInput("flow.count", "counter", 0));
+
+    const restoredRun = secondRuntime.restoreRun("flow-run-1");
+    const doneRun = await secondRuntime.tick(restoredRun, "flow.count");
+
+    expect(doneRun.status).toBe("done");
+    expect(doneRun.actionRuns["node-1"]).toMatchObject({
+      status: "done",
+      output: 2
+    });
+  });
+
   it("restoreRun does not tick or duplicate saved action runs", async () => {
     const runtime = new ActionFlowRuntime();
 
@@ -385,6 +420,41 @@ function createFlowWithInput(id: string, action: string, input: null): FlowDefin
       id: "node-1",
       action,
       input
+    }
+  };
+}
+
+function createFlowWithNumberInput(id: string, action: string, input: number): FlowDefinition {
+  return {
+    id,
+    version: "1.0.0",
+    root: {
+      type: "action",
+      id: "node-1",
+      action,
+      input
+    }
+  };
+}
+
+function createCounterAction(limit: number): ActionDefinition<number, number, { count: number }> {
+  return {
+    id: "counter",
+    version: "1.0.0",
+    mode: "sliceable",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    start: (input) => ({ count: input }),
+    resume: (state) => {
+      const next = { count: state.count + 1 };
+
+      if (next.count >= limit) {
+        return { type: "done", output: next.count };
+      }
+
+      return { type: "yield", state: next };
     }
   };
 }
