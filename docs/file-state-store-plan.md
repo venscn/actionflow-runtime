@@ -81,6 +81,9 @@ Rules:
 - `ActionDefinition` function bodies are not saved.
 - `Error` values need safe serialization before writing.
 - `undefined` should not silently round-trip as a meaningful value. Either remove it through JSON serialization or reject it explicitly; the MVP should choose and document one behavior.
+- Store records should not contain `undefined` optional fields.
+- Runtime-generated records should omit `undefined` optional fields instead of storing them.
+- FileStateStore should continue rejecting `undefined` rather than silently stripping it.
 - Non-JSON values such as functions, symbols, class instances, streams, sockets, and circular references should fail explicitly.
 
 The first implementation should prefer explicit failure over lossy persistence.
@@ -190,7 +193,7 @@ Phase 2:
 
 - FileStateStore for ActionRun / FlowRun
 
-Status: implemented for the current `StateStore` interface only. It persists ActionRun and FlowRun records as local JSON envelopes and does not persist FlowDefinition or EventTriggerDefinition records.
+Status: implemented for the current `StateStore` interface only. It persists ActionRun and FlowRun records as local JSON envelopes and does not persist FlowDefinition or EventTriggerDefinition records. Yielded sliceable ActionRun persistence works when state is JSON-compatible. `restoreRun` plus explicit tick continuation is demonstrated by `examples/file-state-store-resume.ts`.
 
 Phase 3:
 

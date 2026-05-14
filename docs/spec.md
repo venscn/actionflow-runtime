@@ -103,6 +103,8 @@ createActionRun
 
 `runAsyncActionOnce` provides minimal async action execution. It can produce `done`, `waiting`, or `failed`, and FlowEngine can execute async action nodes. It does not connect waiting actions to an event trigger or external resume system. `resumeActionRun` remains sliceable-only. If called with a non-sliceable action, it returns a failed ActionRun.
 
+Runtime-generated `ActionRunRecord` values should omit optional fields when their value is `undefined`. This matters because `FileStateStore` rejects `undefined` as non-JSON-compatible data. For example, a yielded sliceable action should save `state`, but should not include `output`, `error`, or `waitReason` fields if those values are undefined.
+
 ## 6. Flow Definition
 
 Current `FlowDefinition` uses a single root node:
@@ -241,7 +243,9 @@ A parallel node has `branches`.
 - It uses `safeFileName` for ids.
 - It uses `createEnvelope` and `parseEnvelope` for file format handling.
 - It rejects non-JSON-compatible data.
+- It can persist yielded sliceable ActionRun records as long as action state is JSON-compatible.
 - It can be used with `ActionFlowRuntime.restoreRun` for local record reload.
+- `restoreRun` can reload yielded sliceable ActionRun records, and a later explicit `tick` can continue execution.
 - It is useful for local development and inspection.
 - It is not a durable recovery system.
 - It does not persist FlowDefinition or EventTriggerDefinition.
