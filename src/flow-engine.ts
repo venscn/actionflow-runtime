@@ -1,5 +1,6 @@
 import { createActionRun, resumeActionRun, runActionOnce } from "./action-run.js";
 import type { ActionRegistry } from "./action-registry.js";
+import { SliceScheduler } from "./slice-scheduler.js";
 import type {
   ActionContext,
   ActionFlowNode,
@@ -22,6 +23,12 @@ export interface FlowEngineRunRecord extends FlowRunRecord {
   nodeRuns: Record<string, FlowNodeRunRecord>;
   actionRuns: Record<string, ActionRunRecord>;
   sequenceCursors: Record<string, number>;
+  parallelCursors: Record<string, number>;
+}
+
+export interface FlowTickOptions {
+  frameBudgetMs?: number;
+  maxSliceMs?: number;
 }
 
 interface NodeStepResult {
@@ -41,7 +48,8 @@ export function createFlowRun(params: {
     status: params.status ?? "ready",
     nodeRuns: {},
     actionRuns: {},
-    sequenceCursors: {}
+    sequenceCursors: {},
+    parallelCursors: {}
   };
 }
 
@@ -52,7 +60,7 @@ export class FlowEngine {
     return createFlowRun({ id, flow });
   }
 
-  async tick(flowRun: FlowEngineRunRecord, flow: FlowDefinition): Promise<FlowEngineRunRecord> {
+  async tick(flowRun: FlowEngineRunRecord, flow: FlowDefinition, options: FlowTickOptions = {}): Promise<FlowEngineRunRecord> {
     if (!this.registry) {
       return failFlow(flowRun, flow.root.id, new Error("FlowEngine requires an ActionRegistry to execute flows"));
     }
@@ -66,9 +74,10 @@ export class FlowEngine {
       status: "running",
       nodeRuns: { ...flowRun.nodeRuns },
       actionRuns: { ...flowRun.actionRuns },
-      sequenceCursors: { ...flowRun.sequenceCursors }
+      sequenceCursors: { ...flowRun.sequenceCursors },
+      parallelCursors: { ...flowRun.parallelCursors }
     };
-    const result = await this.runNode(nextRun, flow.root);
+    const result = await this.runNode(nextRun, flow.root, options);
 
     return {
       ...result.run,
@@ -76,24 +85,22 @@ export class FlowEngine {
     };
   }
 
-  private async runNode(flowRun: FlowEngineRunRecord, node: FlowNode): Promise<NodeStepResult> {
+  private async runNode(flowRun: FlowEngineRunRecord, node: FlowNode, options: FlowTickOptions): Promise<NodeStepResult> {
     if (node.type === "action") {
       return this.runActionNode(flowRun, node);
     }
 
     if (node.type === "sequence") {
-      return this.runSequenceNode(flowRun, node);
+      return this.runSequenceNode(flowRun, node, options);
     }
 
-    return {
-      run: failFlow(flowRun, node.id, new Error("Parallel flow nodes are not supported yet")),
-      status: "failed"
-    };
+    return this.runParallelNode(flowRun, node, options);
   }
 
   private async runSequenceNode(
     flowRun: FlowEngineRunRecord,
-    node: Extract<FlowNode, { type: "sequence" }>
+    node: Extract<FlowNode, { type: "sequence" }>,
+    options: FlowTickOptions
   ): Promise<NodeStepResult> {
     let cursor = flowRun.sequenceCursors[node.id] ?? 0;
     flowRun.nodeRuns[node.id] = {
@@ -104,7 +111,7 @@ export class FlowEngine {
     while (cursor < node.steps.length) {
       const step = node.steps[cursor];
       flowRun.currentNodeId = step.id;
-      const result = await this.runNode(flowRun, step);
+      const result = await this.runNode(flowRun, step, options);
       flowRun = result.run;
 
       if (result.status === "failed") {
@@ -135,6 +142,120 @@ export class FlowEngine {
       status: "done"
     };
     return { run: flowRun, status: "done" };
+  }
+
+  private async runParallelNode(
+    flowRun: FlowEngineRunRecord,
+    node: Extract<FlowNode, { type: "parallel" }>,
+    options: FlowTickOptions
+  ): Promise<NodeStepResult> {
+    flowRun.nodeRuns[node.id] = {
+      nodeId: node.id,
+      status: "running"
+    };
+
+    const scheduler = new SliceScheduler();
+    let hasScheduledSliceable = false;
+
+    const branchOffset = flowRun.parallelCursors[node.id] ?? 0;
+    const orderedBranches = rotate(node.branches, branchOffset);
+
+    for (const branch of orderedBranches) {
+      if (branch.type !== "action") {
+        const result = await this.runNode(flowRun, branch, options);
+        flowRun = result.run;
+        continue;
+      }
+
+      const existingNodeRun = flowRun.nodeRuns[branch.id];
+
+      if (existingNodeRun?.status === "done" || existingNodeRun?.status === "failed" || existingNodeRun?.status === "waiting") {
+        continue;
+      }
+
+      const action = this.registry?.get(branch.action);
+
+      if (!action) {
+        const error = new Error(`Action not found: ${branch.action}`);
+        flowRun.nodeRuns[branch.id] = {
+          nodeId: branch.id,
+          status: "failed",
+          error
+        };
+        continue;
+      }
+
+      if (action.mode !== "sliceable") {
+        const result = await this.runActionNode(flowRun, branch);
+        flowRun = result.run;
+        continue;
+      }
+
+      const actionRunId = existingNodeRun?.actionRunId ?? `${flowRun.id}:${branch.id}`;
+      const actionRun =
+        flowRun.actionRuns[branch.id] ??
+        createActionRun({
+          id: actionRunId,
+          actionId: action.id,
+          actionVersion: action.version,
+          input: branch.input
+        });
+
+      scheduler.add(actionRun, action);
+      hasScheduledSliceable = true;
+    }
+
+    if (hasScheduledSliceable) {
+      const report = await scheduler.runFrame({
+        frameBudgetMs: options.frameBudgetMs ?? Number.POSITIVE_INFINITY,
+        maxSliceMs: options.maxSliceMs ?? 1
+      });
+      flowRun.parallelCursors[node.id] = node.branches.length > 0 ? (branchOffset + report.slicesRun) % node.branches.length : 0;
+
+      for (const actionRun of scheduler.listRuns()) {
+        const branch = node.branches.find((candidate) => candidate.type === "action" && `${flowRun.id}:${candidate.id}` === actionRun.runId);
+
+        if (!branch) {
+          continue;
+        }
+
+        flowRun.actionRuns[branch.id] = actionRun;
+        flowRun.nodeRuns[branch.id] = {
+          nodeId: branch.id,
+          status: actionStatusToFlowStatus(actionRun.status),
+          actionRunId: actionRun.runId,
+          output: actionRun.output,
+          error: actionRun.error
+        };
+      }
+    }
+
+    const branchStatuses = node.branches.map((branch) => flowRun.nodeRuns[branch.id]?.status ?? "ready");
+
+    if (branchStatuses.includes("failed")) {
+      flowRun.nodeRuns[node.id] = {
+        nodeId: node.id,
+        status: "failed"
+      };
+      return { run: flowRun, status: "failed" };
+    }
+
+    if (branchStatuses.every((status) => status === "done")) {
+      flowRun.nodeRuns[node.id] = {
+        nodeId: node.id,
+        status: "done"
+      };
+      flowRun.currentNodeId = node.id;
+      return { run: flowRun, status: "done" };
+    }
+
+    const hasActiveBranch = branchStatuses.some((status) => status === "ready" || status === "running");
+    const status = hasActiveBranch ? "running" : "waiting";
+    flowRun.nodeRuns[node.id] = {
+      nodeId: node.id,
+      status
+    };
+    return { run: flowRun, status };
   }
 
   private async runActionNode(flowRun: FlowEngineRunRecord, node: ActionFlowNode): Promise<NodeStepResult> {
@@ -212,8 +333,18 @@ function failFlow(flowRun: FlowEngineRunRecord, nodeId: string, error: unknown):
       }
     },
     actionRuns: { ...flowRun.actionRuns },
-    sequenceCursors: { ...flowRun.sequenceCursors }
+    sequenceCursors: { ...flowRun.sequenceCursors },
+    parallelCursors: { ...flowRun.parallelCursors }
   };
+}
+
+function rotate<T>(items: readonly T[], offset: number): T[] {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const normalizedOffset = offset % items.length;
+  return [...items.slice(normalizedOffset), ...items.slice(0, normalizedOffset)];
 }
 
 function createFlowActionContext(): ActionContext {

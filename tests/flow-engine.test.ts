@@ -91,6 +91,98 @@ describe("FlowEngine", () => {
     expect(run.status).toBe("done");
     expect(run.nodeRuns["single-node"]).toMatchObject({ status: "done", output: "single-done" });
   });
+
+  it("advances three sliceable parallel branches in the same tick", async () => {
+    const calls: string[] = [];
+    const registry = new ActionRegistry();
+    registry.register(createLoggedCounterAction("a", 2, calls));
+    registry.register(createLoggedCounterAction("b", 2, calls));
+    registry.register(createLoggedCounterAction("c", 2, calls));
+    const flow = createParallelFlow([
+      { type: "action", id: "branch-a", action: "a", input: 0 },
+      { type: "action", id: "branch-b", action: "b", input: 0 },
+      { type: "action", id: "branch-c", action: "c", input: 0 }
+    ]);
+    const engine = new FlowEngine(registry);
+
+    const run = await engine.tick(engine.createRun("flow-run-1", flow), flow, { frameBudgetMs: 3, maxSliceMs: 1 });
+
+    expect(run.status).toBe("running");
+    expect(calls).toEqual(["a:0", "b:0", "c:0"]);
+    expect(run.actionRuns["branch-a"]?.state).toEqual({ count: 1 });
+    expect(run.actionRuns["branch-b"]?.state).toEqual({ count: 1 });
+    expect(run.actionRuns["branch-c"]?.state).toEqual({ count: 1 });
+  });
+
+  it("finishes parallel branches across multiple small-budget ticks without completing one branch first", async () => {
+    const calls: string[] = [];
+    const registry = new ActionRegistry();
+    registry.register(createLoggedCounterAction("a", 2, calls));
+    registry.register(createLoggedCounterAction("b", 2, calls));
+    registry.register(createLoggedCounterAction("c", 2, calls));
+    const flow = createParallelFlow([
+      { type: "action", id: "branch-a", action: "a", input: 0 },
+      { type: "action", id: "branch-b", action: "b", input: 0 },
+      { type: "action", id: "branch-c", action: "c", input: 0 }
+    ]);
+    const engine = new FlowEngine(registry);
+    let run = engine.createRun("flow-run-1", flow);
+
+    run = await engine.tick(run, flow, { frameBudgetMs: 1, maxSliceMs: 1 });
+    run = await engine.tick(run, flow, { frameBudgetMs: 1, maxSliceMs: 1 });
+    run = await engine.tick(run, flow, { frameBudgetMs: 1, maxSliceMs: 1 });
+
+    expect(calls).toEqual(["a:0", "b:0", "c:0"]);
+    expect(run.status).toBe("running");
+    expect(run.nodeRuns["branch-a"]?.status).toBe("running");
+    expect(run.nodeRuns["branch-b"]?.status).toBe("running");
+    expect(run.nodeRuns["branch-c"]?.status).toBe("running");
+
+    run = await engine.tick(run, flow, { frameBudgetMs: 3, maxSliceMs: 1 });
+
+    expect(calls).toEqual(["a:0", "b:0", "c:0", "a:1", "b:1", "c:1"]);
+    expect(run.status).toBe("done");
+    expect(run.nodeRuns["parallel-root"]).toMatchObject({ status: "done" });
+  });
+
+  it("marks parallel failed when a branch fails", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createCounterAction(1));
+    registry.register(createFailedInstantAction("bad"));
+    const flow = createParallelFlow([
+      { type: "action", id: "branch-good", action: "counter", input: 0 },
+      { type: "action", id: "branch-bad", action: "bad" }
+    ]);
+    const engine = new FlowEngine(registry);
+
+    const run = await engine.tick(engine.createRun("flow-run-1", flow), flow, { frameBudgetMs: 2, maxSliceMs: 1 });
+
+    expect(run.status).toBe("failed");
+    expect(run.nodeRuns["branch-bad"]?.status).toBe("failed");
+    expect(run.nodeRuns["parallel-root"]?.status).toBe("failed");
+  });
+
+  it("marks parallel waiting when only waiting branches remain", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createWaitingAction());
+    registry.register(createCounterAction(2));
+    const flow = createParallelFlow([
+      { type: "action", id: "waiting-branch", action: "waiting", input: 0 },
+      { type: "action", id: "active-branch", action: "counter", input: 0 }
+    ]);
+    const engine = new FlowEngine(registry);
+    const initialRun = engine.createRun("flow-run-1", flow);
+
+    const firstRun = await engine.tick(initialRun, flow, { frameBudgetMs: 2, maxSliceMs: 1 });
+    const secondRun = await engine.tick(firstRun, flow, { frameBudgetMs: 2, maxSliceMs: 1 });
+
+    expect(firstRun.status).toBe("running");
+    expect(firstRun.nodeRuns["waiting-branch"]?.status).toBe("waiting");
+    expect(firstRun.nodeRuns["active-branch"]?.status).toBe("running");
+    expect(secondRun.status).toBe("waiting");
+    expect(secondRun.nodeRuns["waiting-branch"]?.status).toBe("waiting");
+    expect(secondRun.nodeRuns["active-branch"]?.status).toBe("done");
+  });
 });
 
 function createSequenceFlow(steps: FlowDefinition["root"][]): FlowDefinition {
@@ -101,6 +193,18 @@ function createSequenceFlow(steps: FlowDefinition["root"][]): FlowDefinition {
       type: "sequence",
       id: "root",
       steps
+    }
+  };
+}
+
+function createParallelFlow(branches: FlowDefinition["root"][]): FlowDefinition {
+  return {
+    id: "flow",
+    version: "1.0.0",
+    root: {
+      type: "parallel",
+      id: "parallel-root",
+      branches
     }
   };
 }
@@ -128,6 +232,20 @@ function createFailedInstantAction(id: string): ActionDefinition<unknown, string
   return createInstantAction(id, "unused", () => ({ type: "failed", error }));
 }
 
+function createWaitingAction(): ActionDefinition<number, number, { count: number }> {
+  return {
+    id: "waiting",
+    version: "1.0.0",
+    mode: "sliceable",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    start: (input) => ({ count: input }),
+    resume: (state) => ({ type: "waiting", state, reason: "external-event" })
+  };
+}
+
 function createCounterAction(limit: number): ActionDefinition<number, number, { count: number }> {
   return {
     id: "counter",
@@ -139,6 +257,33 @@ function createCounterAction(limit: number): ActionDefinition<number, number, { 
     sideEffects: [],
     start: (input) => ({ count: input }),
     resume: (state) => {
+      const next = { count: state.count + 1 };
+
+      if (next.count >= limit) {
+        return { type: "done", output: next.count };
+      }
+
+      return { type: "yield", state: next };
+    }
+  };
+}
+
+function createLoggedCounterAction(
+  id: string,
+  limit: number,
+  calls: string[]
+): ActionDefinition<number, number, { count: number }> {
+  return {
+    id,
+    version: "1.0.0",
+    mode: "sliceable",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    start: (input) => ({ count: input }),
+    resume: (state) => {
+      calls.push(`${id}:${state.count}`);
       const next = { count: state.count + 1 };
 
       if (next.count >= limit) {
