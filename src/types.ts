@@ -183,6 +183,7 @@ export interface ActionRunRecord {
   input?: unknown;
   output?: unknown;
   state?: unknown;
+  waitReason?: string;
   error?: unknown;
 }
 
