@@ -8,7 +8,7 @@ import {
   type PackageManifestValidationResult,
   validatePackageManifest
 } from "./package-manifest.js";
-import { MemoryStateStore, type StateStore } from "./state-store.js";
+import { MemoryStateStore, supportsRunBatch, type StateStore, type StateStoreRunBatch } from "./state-store.js";
 import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowRunRecord } from "./types.js";
 
 export interface ActionFlowRuntimeDependencies {
@@ -98,10 +98,19 @@ export class ActionFlowRuntime {
   ): Promise<FlowEngineRunRecord> {
     const flow = this.requireFlow(flowId, version);
     const nextRun = await this.engine.tick(run, flow, options);
+    const batch: StateStoreRunBatch = {
+      flowRun: nextRun,
+      actionRuns: Object.values(nextRun.actionRuns)
+    };
+
+    if (supportsRunBatch(this.store)) {
+      this.store.saveRunBatch(batch);
+      return nextRun;
+    }
 
     this.store.saveFlowRun(nextRun);
 
-    for (const actionRun of Object.values(nextRun.actionRuns)) {
+    for (const actionRun of batch.actionRuns ?? []) {
       this.store.saveActionRun(actionRun);
     }
 

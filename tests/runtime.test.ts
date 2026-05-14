@@ -6,12 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ActionFlowRuntime,
   ActionRegistry,
+  type BatchStateStore,
   EventTriggerRegistry,
   FileStateStore,
   FlowRegistry,
   MemoryStateStore
 } from "../src/index.js";
-import type { ActionDefinition, FlowDefinition, FlowEngineRunRecord } from "../src/index.js";
+import type { ActionDefinition, FlowDefinition, FlowEngineRunRecord, StateStoreRunBatch } from "../src/index.js";
 
 describe("ActionFlowRuntime", () => {
   const tempDirs: string[] = [];
@@ -138,6 +139,53 @@ describe("ActionFlowRuntime", () => {
       status: "done",
       output: "ok"
     });
+  });
+
+  it("uses saveRunBatch when the store supports it", async () => {
+    const store = new RecordingBatchStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+
+    const initialRun = runtime.createRun("flow.basic", "flow-run-1");
+    const nextRun = await runtime.tick(initialRun, "flow.basic");
+
+    expect(nextRun.status).toBe("done");
+    expect(store.batchCalls).toHaveLength(1);
+    expect(store.getFlowRun("flow-run-1")).toBe(nextRun);
+    expect(store.getActionRun("flow-run-1:node-1")).toMatchObject({
+      output: "ok"
+    });
+  });
+
+  it("falls back when the store does not support saveRunBatch", async () => {
+    const store = new RecordingFallbackStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+
+    const initialRun = runtime.createRun("flow.basic", "flow-run-1");
+    await runtime.tick(initialRun, "flow.basic");
+
+    expect(store.saveFlowRunCalls).toBe(2);
+    expect(store.saveActionRunCalls).toBe(1);
+    expect(store.getFlowRun("flow-run-1")).toMatchObject({ status: "done" });
+    expect(store.getActionRun("flow-run-1:node-1")).toMatchObject({ output: "ok" });
+  });
+
+  it("propagates saveRunBatch errors", async () => {
+    const error = new Error("batch failed");
+    const store = new FailingBatchStateStore(error);
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+
+    const initialRun = runtime.createRun("flow.basic", "flow-run-1");
+
+    await expect(runtime.tick(initialRun, "flow.basic")).rejects.toBe(error);
   });
 
   it("throws when restoring a missing FlowRun", () => {
@@ -616,3 +664,68 @@ function createCounterAction(limit: number): ActionDefinition<number, number, { 
     }
   };
 }
+
+class RecordingBatchStateStore extends MemoryStateStore {
+  readonly batchCalls: StateStoreRunBatch[] = [];
+
+  override saveRunBatch(batch: StateStoreRunBatch): void {
+    this.batchCalls.push(batch);
+    super.saveRunBatch(batch);
+  }
+}
+
+class FailingBatchStateStore extends MemoryStateStore {
+  constructor(private readonly error: Error) {
+    super();
+  }
+
+  override saveRunBatch(): void {
+    throw this.error;
+  }
+}
+
+class RecordingFallbackStateStore implements BatchlessStateStore {
+  private readonly inner = new MemoryStateStore();
+  saveFlowRunCalls = 0;
+  saveActionRunCalls = 0;
+
+  saveActionRun(run: ReturnType<typeof createStoredActionRun>): void {
+    this.saveActionRunCalls += 1;
+    this.inner.saveActionRun(run);
+  }
+
+  getActionRun(runId: string) {
+    return this.inner.getActionRun(runId);
+  }
+
+  listActionRuns() {
+    return this.inner.listActionRuns();
+  }
+
+  saveFlowRun(run: FlowEngineRunRecord): void {
+    this.saveFlowRunCalls += 1;
+    this.inner.saveFlowRun(run);
+  }
+
+  getFlowRun(flowRunId: string) {
+    return this.inner.getFlowRun(flowRunId);
+  }
+
+  listFlowRuns() {
+    return this.inner.listFlowRuns();
+  }
+
+  deleteActionRun(runId: string): boolean {
+    return this.inner.deleteActionRun(runId);
+  }
+
+  deleteFlowRun(flowRunId: string): boolean {
+    return this.inner.deleteFlowRun(flowRunId);
+  }
+
+  clear(): void {
+    this.inner.clear();
+  }
+}
+
+type BatchlessStateStore = Omit<BatchStateStore, "saveRunBatch">;

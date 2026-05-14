@@ -12,7 +12,20 @@ export interface StateStore {
   clear(): void;
 }
 
-export class MemoryStateStore implements StateStore {
+export interface StateStoreRunBatch {
+  flowRun?: FlowRunRecord;
+  actionRuns?: ActionRunRecord[];
+}
+
+export interface BatchStateStore extends StateStore {
+  saveRunBatch(batch: StateStoreRunBatch): void;
+}
+
+export function supportsRunBatch(store: StateStore): store is BatchStateStore {
+  return typeof (store as { saveRunBatch?: unknown }).saveRunBatch === "function";
+}
+
+export class MemoryStateStore implements BatchStateStore {
   private readonly actionRuns = new Map<string, ActionRunRecord>();
   private readonly flowRuns = new Map<string, FlowRunRecord>();
 
@@ -51,6 +64,16 @@ export class MemoryStateStore implements StateStore {
   clear(): void {
     this.actionRuns.clear();
     this.flowRuns.clear();
+  }
+
+  saveRunBatch(batch: StateStoreRunBatch): void {
+    if (batch.flowRun) {
+      this.saveFlowRun(batch.flowRun);
+    }
+
+    for (const actionRun of batch.actionRuns ?? []) {
+      this.saveActionRun(actionRun);
+    }
   }
 }
 

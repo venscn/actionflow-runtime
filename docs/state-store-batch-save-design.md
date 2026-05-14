@@ -119,9 +119,13 @@ Phase 1:
 - Add `MemoryStateStore.saveRunBatch`.
 - Make runtime use optional batch.
 
+Status: implemented. `BatchStateStore`, `StateStoreRunBatch`, `supportsRunBatch`, MemoryStateStore batch support, and ActionFlowRuntime optional batch usage are in place.
+
 Phase 2:
 
 - Add `FileStateStore` best-effort `saveRunBatch`.
+
+Status: not implemented.
 
 Phase 3:
 
