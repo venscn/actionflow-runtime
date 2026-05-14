@@ -1,14 +1,27 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
 import {
   ActionFlowRuntime,
   ActionRegistry,
   EventTriggerRegistry,
+  FileStateStore,
   FlowRegistry,
   MemoryStateStore
 } from "../src/index.js";
 import type { ActionDefinition, FlowDefinition } from "../src/index.js";
 
 describe("ActionFlowRuntime", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const tempDir of tempDirs.splice(0)) {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("creates default registries, store, and engine", () => {
     const runtime = new ActionFlowRuntime();
 
@@ -95,6 +108,36 @@ describe("ActionFlowRuntime", () => {
     expect(runtime.flows).toBe(flows);
     expect(runtime.triggers).toBe(triggers);
     expect(runtime.store).toBe(store);
+  });
+
+  it("can persist runs through an injected FileStateStore", async () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "actionflow-runtime-file-store-"));
+    tempDirs.push(rootDir);
+    const fileStore = new FileStateStore({ rootDir });
+    const runtime = new ActionFlowRuntime({ stateStore: fileStore });
+    const flow: FlowDefinition = {
+      id: "flow.basic",
+      version: "1.0.0",
+      root: {
+        type: "action",
+        id: "node-1",
+        action: "echo",
+        input: null
+      }
+    };
+
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(flow);
+
+    const initialRun = runtime.createRun("flow.basic", "flow-run-1");
+    const nextRun = await runtime.tick(initialRun, "flow.basic");
+
+    expect(runtime.store).toBe(fileStore);
+    expect(fileStore.getFlowRun("flow-run-1")).toEqual(nextRun);
+    expect(fileStore.getActionRun("flow-run-1:node-1")).toMatchObject({
+      status: "done",
+      output: "ok"
+    });
   });
 
   it("registers triggers without automatically running flows", () => {

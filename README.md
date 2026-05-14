@@ -103,6 +103,18 @@ run = await runtime.tick(run, "flow.basic");
 const packageCheck = runtime.checkPackageManifest(manifest);
 ```
 
+## FileStateStore Example
+
+```ts
+import { ActionFlowRuntime, FileStateStore } from "actionflow-runtime";
+
+const runtime = new ActionFlowRuntime({
+  stateStore: new FileStateStore({ rootDir: ".actionflow" })
+});
+```
+
+FileStateStore is for local ActionRun / FlowRun JSON persistence, not durable recovery.
+
 ## Basic Parallel Example
 
 Run:

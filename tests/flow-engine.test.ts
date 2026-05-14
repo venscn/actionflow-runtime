@@ -92,6 +92,27 @@ describe("FlowEngine", () => {
     expect(run.nodeRuns["single-node"]).toMatchObject({ status: "done", output: "single-done" });
   });
 
+  it("omits undefined optional fields from generated nodeRuns", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createInstantAction("single", "ok"));
+    const flow: FlowDefinition = {
+      id: "flow",
+      version: "1.0.0",
+      root: { type: "action", id: "node-1", action: "single" }
+    };
+    const engine = new FlowEngine(registry);
+
+    const run = await engine.tick(engine.createRun("flow-run-1", flow), flow);
+    const nodeRun = run.nodeRuns["node-1"];
+
+    expect(nodeRun).toMatchObject({
+      status: "done",
+      output: "ok"
+    });
+    expect(Object.prototype.hasOwnProperty.call(nodeRun, "error")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(nodeRun, "waitReason")).toBe(false);
+  });
+
   it("advances three sliceable parallel branches in the same tick", async () => {
     const calls: string[] = [];
     const registry = new ActionRegistry();

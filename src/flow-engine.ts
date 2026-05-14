@@ -221,13 +221,13 @@ export class FlowEngine {
         }
 
         flowRun.actionRuns[branch.id] = actionRun;
-        flowRun.nodeRuns[branch.id] = {
+        flowRun.nodeRuns[branch.id] = createNodeRunRecord({
           nodeId: branch.id,
           status: actionStatusToFlowStatus(actionRun.status),
           actionRunId: actionRun.runId,
           output: actionRun.output,
           error: actionRun.error
-        };
+        });
       }
     }
 
@@ -300,14 +300,14 @@ export class FlowEngine {
     });
 
     flowRun.actionRuns[node.id] = nextActionRun;
-    flowRun.nodeRuns[node.id] = {
+    flowRun.nodeRuns[node.id] = createNodeRunRecord({
       nodeId: node.id,
       status: actionStatusToFlowStatus(nextActionRun.status),
       actionRunId: nextActionRun.runId,
       output: nextActionRun.output,
       waitReason: nextActionRun.waitReason,
       error: nextActionRun.error
-    };
+    });
 
     return {
       run: flowRun,
@@ -362,6 +362,31 @@ function actionStatusToFlowStatus(status: ActionRunRecord["status"]): FlowRunSta
   }
 
   return status;
+}
+
+function createNodeRunRecord(params: FlowNodeRunRecord): FlowNodeRunRecord {
+  const record: FlowNodeRunRecord = {
+    nodeId: params.nodeId,
+    status: params.status
+  };
+
+  if (params.actionRunId !== undefined) {
+    record.actionRunId = params.actionRunId;
+  }
+
+  if (params.output !== undefined) {
+    record.output = params.output;
+  }
+
+  if (params.waitReason !== undefined) {
+    record.waitReason = params.waitReason;
+  }
+
+  if (params.error !== undefined) {
+    record.error = params.error;
+  }
+
+  return record;
 }
 
 function failFlow(flowRun: FlowEngineRunRecord, nodeId: string, error: unknown): FlowEngineRunRecord {
