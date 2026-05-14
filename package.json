@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
-    "example:basic": "tsx examples/basic-parallel.ts"
+    "example:basic": "tsx examples/basic-parallel.ts",
+    "example:file-store": "tsx examples/file-state-store-restore.ts"
   },
   "keywords": [
     "workflow",

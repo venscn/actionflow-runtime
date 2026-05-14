@@ -78,6 +78,7 @@ A Flow describes what should run. A FlowRun records one execution of that Flow. 
 npm install
 npm test
 npm run example:basic
+npm run example:file-store
 ```
 
 ## Documentation
@@ -115,6 +116,14 @@ const runtime = new ActionFlowRuntime({
 
 FileStateStore is for local ActionRun / FlowRun JSON persistence, not durable recovery.
 `restoreRun` can reload saved run records, but it does not automatically continue execution or recover waiting events.
+
+Run FileStateStore restore example:
+
+```sh
+npm run example:file-store
+```
+
+This example demonstrates local JSON record reload only, not durable recovery or event recovery.
 
 ## Basic Parallel Example
 
