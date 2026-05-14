@@ -149,10 +149,11 @@ Implemented:
 - ActionFlowRuntime facade
 - shared simple version comparison
 - in-memory run records
+- FileStateStore for local ActionRun / FlowRun persistence
 
 Not implemented yet:
 
-- persistent state store integration
+- durable recovery after process restart
 - variable/template binding between flow nodes
 - durable event wakeup for waiting actions
 - worker process execution
@@ -160,6 +161,7 @@ Not implemented yet:
 - event bus / automatic trigger execution
 - full schema validation
 - package loading / installation
+- production database store
 
 ## Roadmap
 

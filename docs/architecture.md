@@ -30,7 +30,8 @@ ActionFlow Runtime
 │  ├─ descriptive event-to-flow metadata validation
 │  └─ in-memory EventTriggerRegistry
 └─ StateStore
-   └─ current in-memory store skeleton
+   ├─ MemoryStateStore for in-memory records
+   └─ FileStateStore for local ActionRun / FlowRun JSON files
 ```
 
 ## ActionFlowRuntime Facade
@@ -133,7 +134,7 @@ Current action definitions include `sideEffects: string[]`. The runtime does not
 ## Extension Directions
 
 - **async action**: add external event recovery for waiting async actions.
-- **state persistence**: persist FlowRun, ActionRun, node state, outputs, and errors outside memory. See [State Persistence Design](state-persistence-design.md) and [FileStateStore MVP Plan](file-state-store-plan.md) for future designs; FileStateStore, SQLiteStateStore, and durable recovery are not implemented yet.
+- **state persistence**: persist FlowRun, ActionRun, node state, outputs, and errors outside memory. `FileStateStore` currently provides local JSON persistence for ActionRun and FlowRun records only; it is useful for development and inspection, not a durable recovery system. See [State Persistence Design](state-persistence-design.md) and [FileStateStore MVP Plan](file-state-store-plan.md) for the broader recovery design; SQLiteStateStore and durable recovery are not implemented yet.
 - **package manifest**: define metadata for action bundles, versions, side effects, and compatibility.
 - **worker action**: run actions in isolated workers or external processes.
 - **event trigger**: currently a descriptive structure, validator, and in-memory registry only; future work can connect it to an event bus and waiting-action recovery.

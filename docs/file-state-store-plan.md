@@ -1,6 +1,6 @@
 # FileStateStore MVP Plan
 
-This document outlines a minimal FileStateStore implementation plan. It is a design and implementation guide only; FileStateStore is not implemented yet.
+This document outlines a minimal FileStateStore implementation plan. The current implementation covers ActionRun and FlowRun persistence only; flow definition persistence, trigger persistence, and durable recovery are not implemented.
 
 ## 1. Purpose
 
@@ -184,11 +184,13 @@ Phase 1:
 - safe file name helper
 - JSON serializability check
 
-Status: base helpers are implemented in `src/file-state-store-utils.ts`; FileStateStore itself is not implemented yet.
+Status: base helpers are implemented in `src/file-state-store-utils.ts`.
 
 Phase 2:
 
 - FileStateStore for ActionRun / FlowRun
+
+Status: implemented for the current `StateStore` interface only. It persists ActionRun and FlowRun records as local JSON envelopes and does not persist FlowDefinition or EventTriggerDefinition records.
 
 Phase 3:
 
