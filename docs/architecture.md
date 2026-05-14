@@ -17,6 +17,8 @@ ActionFlow Runtime
 │  ├─ action node execution
 │  ├─ sequence node execution
 │  └─ parallel node execution
+├─ PackageManifest
+│  └─ descriptive package metadata validation
 └─ StateStore
    └─ current in-memory store skeleton
 ```
