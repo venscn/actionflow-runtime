@@ -185,10 +185,12 @@ A sequence node has ordered `steps`.
 - It exposes `actions`, `flows`, `triggers`, `store`, and `engine`.
 - `createRun(flowId, runId, version?)` resolves a flow from `FlowRegistry`, creates a FlowRun through `FlowEngine`, saves it to the store, and returns it.
 - `tick(run, flowId, options?, version?)` resolves a flow, advances it through `FlowEngine`, saves the updated FlowRun, and saves contained ActionRuns.
+- `restoreRun(flowRunId)` reloads a saved FlowRun from `StateStore`, fills missing FlowEngine record fields, and merges stored ActionRuns whose run ids start with the FlowRun id.
 - `checkPackageManifest(manifest)` first validates manifest structure, then checks referenced actions and flows against the runtime registries.
 - It does not add new execution semantics.
 - It does not install packages, load code, or execute flows during package checks.
 - It does not automatically execute triggers.
+- It does not automatically continue restored runs.
 - It does not provide persistent recovery.
 - Injecting `FileStateStore` does not add durable recovery.
 
@@ -239,6 +241,7 @@ A parallel node has `branches`.
 - It uses `safeFileName` for ids.
 - It uses `createEnvelope` and `parseEnvelope` for file format handling.
 - It rejects non-JSON-compatible data.
+- It can be used with `ActionFlowRuntime.restoreRun` for local record reload.
 - It is useful for local development and inspection.
 - It is not a durable recovery system.
 - It does not persist FlowDefinition or EventTriggerDefinition.

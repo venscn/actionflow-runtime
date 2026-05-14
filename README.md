@@ -114,6 +114,7 @@ const runtime = new ActionFlowRuntime({
 ```
 
 FileStateStore is for local ActionRun / FlowRun JSON persistence, not durable recovery.
+`restoreRun` can reload saved run records, but it does not automatically continue execution or recover waiting events.
 
 ## Basic Parallel Example
 

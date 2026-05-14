@@ -9,7 +9,7 @@ import {
   validatePackageManifest
 } from "./package-manifest.js";
 import { MemoryStateStore, type StateStore } from "./state-store.js";
-import type { ActionDefinition, FlowDefinition } from "./types.js";
+import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowRunRecord } from "./types.js";
 
 export interface ActionFlowRuntimeDependencies {
   actionRegistry?: ActionRegistry;
@@ -68,6 +68,28 @@ export class ActionFlowRuntime {
     return run;
   }
 
+  restoreRun(flowRunId: string): FlowEngineRunRecord {
+    const storedRun = this.store.getFlowRun(flowRunId);
+
+    if (!storedRun) {
+      throw new Error(`FlowRun not found: ${flowRunId}`);
+    }
+
+    const restored = normalizeFlowEngineRunRecord(storedRun);
+    const actionRunPrefix = `${flowRunId}:`;
+
+    for (const actionRun of this.store.listActionRuns()) {
+      if (!actionRun.runId.startsWith(actionRunPrefix)) {
+        continue;
+      }
+
+      const nodeId = actionRun.runId.slice(actionRunPrefix.length);
+      restored.actionRuns[nodeId] = actionRun;
+    }
+
+    return restored;
+  }
+
   async tick(
     run: FlowEngineRunRecord,
     flowId: string,
@@ -95,4 +117,28 @@ export class ActionFlowRuntime {
 
     return flow;
   }
+}
+
+function normalizeFlowEngineRunRecord(run: FlowRunRecord): FlowEngineRunRecord {
+  const candidate = run as FlowRunRecord & Partial<FlowEngineRunRecord>;
+
+  return {
+    ...run,
+    nodeRuns: cloneRecord<FlowEngineRunRecord["nodeRuns"][string]>(candidate.nodeRuns),
+    actionRuns: cloneRecord<ActionRunRecord>(candidate.actionRuns),
+    sequenceCursors: cloneRecord<number>(candidate.sequenceCursors),
+    parallelCursors: cloneRecord<number>(candidate.parallelCursors)
+  };
+}
+
+function cloneRecord<T>(value: unknown): Record<string, T> {
+  if (!isRecord(value)) {
+    return {};
+  }
+
+  return { ...(value as Record<string, T>) };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
