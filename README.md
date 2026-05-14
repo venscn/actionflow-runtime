@@ -8,11 +8,16 @@ It runs serializable flows made of semantic actions. An action can complete imme
 
 ActionFlow Runtime is a small TypeScript runtime for:
 
-- registering versioned action definitions
+- registering versioned action definitions with `ActionRegistry`
+- registering versioned flow definitions with `FlowRegistry`
+- managing event trigger definitions with `EventTriggerRegistry`
+- validating package manifests and optionally checking referenced actions/flows against registries
 - running instant actions once
+- running minimal async actions through ActionRun and FlowEngine action nodes
 - resuming sliceable actions across multiple slices
 - scheduling multiple sliceable action runs within a frame budget
 - executing simple flow definitions with action, sequence, and parallel nodes
+- composing the core pieces through `ActionFlowRuntime`
 
 The current implementation is intentionally small and in-memory.
 
@@ -29,6 +34,10 @@ It does not depend on LLMs, AI APIs, prompt templates, model tools, or agent orc
 - **Slice**: one resumable execution step of a sliceable ActionRun.
 - **Flow**: a JSON-serializable workflow definition made from nodes.
 - **FlowRun**: one execution instance of a flow.
+- **FlowRegistry**: an in-memory registry for versioned Flow definitions.
+- **EventTrigger**: a descriptive event-to-flow rule; currently stored and validated, not executed.
+- **PackageManifest**: package metadata for actions, flows, rules, config, and permission labels; currently validated and optionally checked against registries.
+- **ActionFlowRuntime**: a facade that wires registries, store, and FlowEngine together.
 - **Runtime**: the combination of registry, flow engine, slice scheduler, and state store.
 
 ## Why "ActionFlow Runtime"
@@ -132,7 +141,9 @@ Implemented:
 - FlowRegistry
 - EventTriggerDefinition / EventTriggerRegistry
 - PackageManifest validation
+- runtime package manifest checks
 - ActionFlowRuntime facade
+- shared simple version comparison
 - in-memory run records
 
 Not implemented yet:
@@ -144,12 +155,13 @@ Not implemented yet:
 - permission enforcement
 - event bus / automatic trigger execution
 - full schema validation
+- package loading / installation
 
 ## Roadmap
 
-- Add event recovery for waiting async actions.
-- Add persistent state storage for FlowRun and ActionRun records.
-- Expand package manifest loading / compatibility / permissions.
-- Add worker action execution for isolated or long-running work.
-- Add event triggers that can start or resume flows.
-- Add a permission model for explicit side effects and external access.
+- Event recovery for waiting async actions.
+- Persistent state storage for FlowRun and ActionRun records.
+- Package loading / compatibility / permissions.
+- Worker action execution.
+- Event bus.
+- Permission model.
