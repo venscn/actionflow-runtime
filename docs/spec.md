@@ -168,7 +168,7 @@ A sequence node has ordered `steps`.
 `FlowRegistry` manages `FlowDefinition` records in memory.
 
 - It supports registration, lookup by id, lookup by id and version, listing, deletion, and clearing.
-- `get(id)` returns the latest registered version for that id using simple dotted-number comparison.
+- `get(id)` returns the latest registered version for that id using simple dotted-version comparison, not full semver.
 - It validates only the minimal flow shape: non-empty `id`, non-empty `version`, and a present `root`.
 - It does not execute flows.
 - It does not persist flows.

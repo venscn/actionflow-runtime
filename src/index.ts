@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./version.js";
 export * from "./action-registry.js";
 export * from "./action-run.js";
 export * from "./slice-scheduler.js";
