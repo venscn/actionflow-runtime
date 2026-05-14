@@ -163,7 +163,7 @@ A sequence node has ordered `steps`.
 - If a sliceable action step yields, the FlowRun remains `running`; the next tick continues the same node.
 - A sequence becomes `done` when all steps are done.
 
-## 7.1 FlowRegistry
+## 8. FlowRegistry
 
 `FlowRegistry` manages `FlowDefinition` records in memory.
 
@@ -174,7 +174,7 @@ A sequence node has ordered `steps`.
 - It does not persist flows.
 - It does not automatically integrate with `EventTriggerRegistry`.
 
-## 7.2 ActionFlowRuntime
+## 9. ActionFlowRuntime
 
 `ActionFlowRuntime` is a convenience facade over the current in-memory components.
 
@@ -188,7 +188,7 @@ A sequence node has ordered `steps`.
 - It does not automatically execute triggers.
 - It does not provide persistent recovery.
 
-## 8. Parallel Semantics
+## 10. Parallel Semantics
 
 A parallel node has `branches`.
 
@@ -201,7 +201,7 @@ A parallel node has `branches`.
 - If only waiting branches remain, parallel becomes `waiting`.
 - With small `frameBudgetMs`, branches may complete across multiple ticks and are advanced in a rotating order rather than fully completing one branch before starting the next.
 
-## 9. SliceScheduler Semantics
+## 11. SliceScheduler Semantics
 
 `SliceScheduler` manages ready sliceable ActionRuns.
 
@@ -226,7 +226,7 @@ A parallel node has `branches`.
 - `failedRuns`
 - `waitingRuns`
 
-## 10. Current Limitations
+## 12. Current Limitations
 
 The following are not implemented:
 
@@ -240,7 +240,7 @@ The following are not implemented:
 - Event Trigger support is limited to a description format, lightweight validator, and in-memory registry; it does not automatically start flows or recover waiting async actions.
 - There is no complete schema validation.
 
-## 11. Event Trigger Definition
+## 13. Event Trigger Definition
 
 `EventTriggerDefinition` is a descriptive structure for future event-based flow starts and waiting-action recovery:
 
@@ -254,7 +254,7 @@ The following are not implemented:
 
 Current support includes `EventTriggerDefinition`, `validateEventTrigger(trigger)`, and `EventTriggerRegistry`. The registry only manages trigger definitions in memory. It does not validate whether the target flow exists, automatically start flows, provide an event bus, or resume waiting async actions from events.
 
-## 12. Compatibility Rules
+## 14. Compatibility Rules
 
 Future development should preserve these rules:
 
