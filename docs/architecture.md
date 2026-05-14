@@ -33,6 +33,33 @@ ActionFlow Runtime
    └─ current in-memory store skeleton
 ```
 
+## ActionFlowRuntime Facade
+
+`ActionFlowRuntime` is a lightweight composition layer over the current runtime components.
+
+By default it creates:
+
+- `ActionRegistry`
+- `FlowRegistry`
+- `EventTriggerRegistry`
+- `MemoryStateStore`
+- `FlowEngine`
+
+It provides convenience methods:
+
+- `registerAction`
+- `registerFlow`
+- `registerTrigger`
+- `createRun`
+- `tick`
+- `checkPackageManifest`
+
+`createRun` and `tick` use `FlowRegistry` to resolve `FlowDefinition` records. `tick` saves the updated FlowRun and contained ActionRuns to the configured `StateStore`.
+
+`checkPackageManifest` only performs manifest structure validation and action/flow registry consistency checks.
+
+The facade does not add execution semantics. It does not automatically execute `EventTrigger` definitions, load package code, or provide persistent recovery.
+
 ## Action-Level Time Slicing
 
 Sliceable actions split execution into resumable steps.
