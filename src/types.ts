@@ -173,12 +173,16 @@ export type FlowRunStatus = "ready" | "running" | "waiting" | "done" | "failed";
  * Persisted record for one action execution instance.
  */
 export interface ActionRunRecord {
+  /** Backward-compatible record identifier. */
   id: string;
+  /** Stable execution identifier for this action run. */
+  runId: string;
   actionId: string;
+  actionVersion?: string;
   status: ActionStatus;
-  input?: JsonValue;
-  output?: JsonValue;
-  state?: JsonValue;
+  input?: unknown;
+  output?: unknown;
+  state?: unknown;
   error?: unknown;
 }
 
