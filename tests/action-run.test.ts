@@ -3,12 +3,12 @@ import { createActionRun, resumeActionRun, runActionOnce } from "../src/index.js
 import type { ActionContext, ActionDefinition } from "../src/index.js";
 
 function createContext(): ActionContext {
-  const deadline = Date.now() + 1000;
+  const deadline = performance.now() + 1000;
 
   return {
-    now: () => Date.now(),
+    now: () => performance.now(),
     deadline: () => deadline,
-    remainingMs: () => Math.max(0, deadline - Date.now()),
+    remainingMs: () => Math.max(0, deadline - performance.now()),
     shouldYield: () => false,
     log: () => undefined
   };

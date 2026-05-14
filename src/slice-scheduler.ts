@@ -39,7 +39,7 @@ export class SliceScheduler {
   }
 
   async runFrame(params: { frameBudgetMs: number; maxSliceMs: number }): Promise<FrameReport> {
-    const startedAt = Date.now();
+    const startedAt = performance.now();
     const frameDeadline = startedAt + params.frameBudgetMs;
     const report: FrameReport = {
       startedAt,
@@ -56,11 +56,12 @@ export class SliceScheduler {
     let reservedMs = 0;
 
     while (this.readyQueue.length > 0) {
-      const now = Date.now();
-      const remainingFrameMs = Math.min(frameDeadline - now, params.frameBudgetMs - reservedMs);
-      const sliceBudgetMs = Math.min(params.maxSliceMs, remainingFrameMs);
+      const now = performance.now();
+      const remainingFrameMs = frameDeadline - now;
+      const remainingBudgetMs = params.frameBudgetMs - reservedMs;
+      const sliceBudgetMs = Math.min(params.maxSliceMs, remainingBudgetMs);
 
-      if (sliceBudgetMs <= 0) {
+      if (remainingFrameMs <= 0 || sliceBudgetMs <= 0) {
         break;
       }
 
@@ -76,7 +77,7 @@ export class SliceScheduler {
         continue;
       }
 
-      const context = createFrameContext(now, now + sliceBudgetMs);
+      const context = createFrameContext(now, Math.min(now + sliceBudgetMs, frameDeadline));
       const nextRun = await resumeActionRun({
         run: scheduled.run,
         action: scheduled.action,
@@ -99,7 +100,7 @@ export class SliceScheduler {
       }
     }
 
-    report.endedAt = Date.now();
+    report.endedAt = performance.now();
     report.consumedMs = Math.min(params.frameBudgetMs, Math.max(report.endedAt - report.startedAt, reservedMs));
 
     return report;
@@ -108,10 +109,10 @@ export class SliceScheduler {
 
 function createFrameContext(startedAt: number, deadline: number): ActionContext {
   return {
-    now: () => Date.now(),
+    now: () => performance.now(),
     deadline: () => deadline,
-    remainingMs: () => Math.max(0, deadline - Date.now()),
-    shouldYield: () => Date.now() >= deadline,
+    remainingMs: () => Math.max(0, deadline - performance.now()),
+    shouldYield: () => performance.now() >= deadline,
     log: () => undefined
   };
 }

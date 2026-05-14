@@ -348,13 +348,13 @@ function rotate<T>(items: readonly T[], offset: number): T[] {
 }
 
 function createFlowActionContext(): ActionContext {
-  const startedAt = Date.now();
+  const startedAt = performance.now();
   const deadline = startedAt + 1_000;
 
   return {
-    now: () => Date.now(),
+    now: () => performance.now(),
     deadline: () => deadline,
-    remainingMs: () => Math.max(0, deadline - Date.now()),
+    remainingMs: () => Math.max(0, deadline - performance.now()),
     shouldYield: () => false,
     log: () => undefined
   };

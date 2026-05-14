@@ -36,6 +36,8 @@ The runtime stores state on the ActionRun. A sliceable action starts by producin
 
 `SliceScheduler` applies a frame budget and a per-slice budget. It advances ready runs and requeues only runs that yield back to `ready`.
 
+Scheduling time uses runtime monotonic milliseconds, not wall-clock time. The values exposed through `ActionContext.now()`, `deadline()`, and `remainingMs()` are for frame and slice budget decisions.
+
 ## FlowEngine vs SliceScheduler
 
 `FlowEngine` owns flow semantics:

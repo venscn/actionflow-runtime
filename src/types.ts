@@ -30,12 +30,12 @@ export type ActionStatus = "ready" | "running" | "waiting" | "done" | "failed";
  */
 export interface ActionContext {
   /**
-   * Returns the current runtime time as milliseconds since the Unix epoch.
+   * Returns the current runtime monotonic time in milliseconds.
    */
   now(): number;
 
   /**
-   * Returns the execution deadline as milliseconds since the Unix epoch.
+   * Returns the current slice or action deadline in runtime monotonic milliseconds.
    */
   deadline(): number;
 

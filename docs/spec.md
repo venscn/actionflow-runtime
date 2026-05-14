@@ -48,6 +48,8 @@ An `ActionDefinition<I, O, S>` defines a reusable action:
 - `run`: optional function used by instant actions.
 - `resume`: optional function used by sliceable actions to advance from saved state.
 
+Action functions receive an `ActionContext`. Its `now()` and `deadline()` values are runtime monotonic milliseconds, not wall-clock time. They are intended for scheduling budgets and yield decisions.
+
 Execution modes:
 
 - **instant**: implemented. The runtime calls `run(input, context)` once.
@@ -171,6 +173,7 @@ A parallel node has `branches`.
 
 - `frameBudgetMs`: total budget for one scheduling frame.
 - `maxSliceMs`: maximum budget assigned to one ActionRun slice.
+- Scheduling time uses runtime monotonic milliseconds, not wall-clock time.
 - Ready queue: stores ActionRuns whose status is `ready`.
 - After `yield`, the run status becomes `ready` and the scheduler requeues it.
 - After `done`, `failed`, or `waiting`, the run is not requeued.
