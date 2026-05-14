@@ -88,6 +88,8 @@ npm run example:basic
 ## Facade Example
 
 ```ts
+import { ActionFlowRuntime } from "actionflow-runtime";
+
 const runtime = new ActionFlowRuntime();
 
 runtime.registerAction(action);
