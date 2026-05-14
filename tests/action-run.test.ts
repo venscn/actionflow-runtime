@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createActionRun, resumeActionRun, runActionOnce } from "../src/index.js";
+import { createActionRun, resumeActionRun, runActionOnce, runAsyncActionOnce } from "../src/index.js";
 import type { ActionContext, ActionDefinition } from "../src/index.js";
 
 function createContext(): ActionContext {
@@ -104,6 +104,132 @@ describe("runActionOnce", () => {
     expect(run.status).toBe("failed");
     expect(run.error).toBeInstanceOf(Error);
     expect(String(run.error)).toContain("Unsupported action mode");
+  });
+});
+
+describe("runAsyncActionOnce", () => {
+  it("marks async actions done when they resolve done", async () => {
+    const action = createAsyncAction(async (input) => ({ type: "done", output: input }));
+
+    const run = await runAsyncActionOnce({
+      runId: "run-1",
+      action,
+      input: "hello",
+      context: createContext()
+    });
+
+    expect(run).toMatchObject({
+      status: "done",
+      output: "hello"
+    });
+  });
+
+  it("marks async actions waiting when they resolve waiting", async () => {
+    const action = createAsyncAction(async () => ({
+      type: "waiting",
+      state: { cursor: 1 },
+      reason: "external-event"
+    }));
+
+    const run = await runAsyncActionOnce({
+      runId: "run-1",
+      action,
+      input: "hello",
+      context: createContext()
+    });
+
+    expect(run.status).toBe("waiting");
+    expect(run.state).toEqual({ cursor: 1 });
+    expect(run.waitReason).toBe("external-event");
+  });
+
+  it("marks async actions failed when they resolve failed", async () => {
+    const error = new Error("async failed");
+    const action = createAsyncAction(async () => ({ type: "failed", error }));
+
+    const run = await runAsyncActionOnce({
+      runId: "run-1",
+      action,
+      input: "hello",
+      context: createContext()
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toBe(error);
+  });
+
+  it("marks async actions failed when the promise rejects", async () => {
+    const error = new Error("rejected");
+    const action = createAsyncAction(async () => {
+      throw error;
+    });
+
+    const run = await runAsyncActionOnce({
+      runId: "run-1",
+      action,
+      input: "hello",
+      context: createContext()
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toBe(error);
+  });
+
+  it("fails when an async action is missing run", async () => {
+    const action: ActionDefinition<string, string, { cursor: number }> = {
+      id: "missing-run",
+      version: "1.0.0",
+      mode: "async",
+      inputSchema: undefined,
+      outputSchema: undefined,
+      stateSchema: undefined,
+      sideEffects: []
+    };
+
+    const run = await runAsyncActionOnce({
+      runId: "run-1",
+      action,
+      input: "hello",
+      context: createContext()
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toBeInstanceOf(Error);
+    expect(String(run.error)).toContain("missing run");
+  });
+
+  it("fails explicitly for non-async actions", async () => {
+    const action = createInstantAction((input) => ({ type: "done", output: input }));
+
+    const run = await runAsyncActionOnce({
+      runId: "run-1",
+      action,
+      input: "hello",
+      context: createContext()
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.error).toBeInstanceOf(Error);
+    expect(String(run.error)).toContain("Unsupported action mode");
+  });
+
+  it("treats yield as unsupported for async actions and saves state", async () => {
+    const action = createAsyncAction(async () => ({
+      type: "yield",
+      state: { cursor: 1 }
+    }));
+
+    const run = await runAsyncActionOnce({
+      runId: "run-1",
+      action,
+      input: "hello",
+      context: createContext()
+    });
+
+    expect(run.status).toBe("failed");
+    expect(run.state).toEqual({ cursor: 1 });
+    expect(run.error).toBeInstanceOf(Error);
+    expect(String(run.error)).toContain("Unsupported result type");
   });
 });
 
@@ -283,5 +409,20 @@ function createCounterAction(limit: number): ActionDefinition<number, number, { 
 
       return { type: "yield", state: next };
     }
+  };
+}
+
+function createAsyncAction(
+  run: ActionDefinition<string, string, { cursor: number }>["run"]
+): ActionDefinition<string, string, { cursor: number }> {
+  return {
+    id: "async-action",
+    version: "1.0.0",
+    mode: "async",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    run
   };
 }

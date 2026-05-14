@@ -82,6 +82,80 @@ export async function runActionOnce(params: {
   }
 }
 
+export async function runAsyncActionOnce(params: {
+  runId: string;
+  action: ActionDefinition;
+  input?: unknown;
+  context: ActionContext;
+}): Promise<ActionRunRecord> {
+  const baseRun: ActionRunRecord = {
+    id: params.runId,
+    runId: params.runId,
+    actionId: params.action.id,
+    actionVersion: params.action.version,
+    input: params.input,
+    status: "running"
+  };
+
+  if (params.action.mode !== "async") {
+    return {
+      ...baseRun,
+      status: "failed",
+      error: new Error(`Unsupported action mode for runAsyncActionOnce: ${params.action.mode}`)
+    };
+  }
+
+  if (!params.action.run) {
+    return {
+      ...baseRun,
+      status: "failed",
+      error: new Error(`Async action is missing run(): ${params.action.id}@${params.action.version}`)
+    };
+  }
+
+  try {
+    const result = await params.action.run(params.input, params.context);
+
+    if (result.type === "done") {
+      return {
+        ...baseRun,
+        status: "done",
+        output: result.output
+      };
+    }
+
+    if (result.type === "waiting") {
+      return {
+        ...baseRun,
+        status: "waiting",
+        state: result.state,
+        waitReason: result.reason
+      };
+    }
+
+    if (result.type === "failed") {
+      return {
+        ...baseRun,
+        status: "failed",
+        error: result.error
+      };
+    }
+
+    return {
+      ...baseRun,
+      status: "failed",
+      state: result.state,
+      error: new Error("Unsupported result type for async action: yield")
+    };
+  } catch (error) {
+    return {
+      ...baseRun,
+      status: "failed",
+      error
+    };
+  }
+}
+
 export async function resumeActionRun(params: {
   run: ActionRunRecord;
   action: ActionDefinition;

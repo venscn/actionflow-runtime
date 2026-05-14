@@ -6,6 +6,7 @@ This specification describes the core behavior currently implemented in ActionFl
 
 - versioned action registration
 - instant ActionRun execution
+- minimal async ActionRun execution
 - sliceable ActionRun start/resume/yield/done/waiting/failed handling
 - frame-budgeted slice scheduling
 - FlowEngine execution for action, sequence, and parallel nodes
@@ -53,7 +54,7 @@ Action functions receive an `ActionContext`. Its `now()` and `deadline()` values
 Execution modes:
 
 - **instant**: implemented. The runtime calls `run(input, context)` once.
-- **async**: reserved in the type system but not fully implemented.
+- **async**: minimally implemented at the ActionRun layer through `runAsyncActionOnce`. FlowEngine does not execute async actions yet, and there is no event recovery system.
 - **sliceable**: implemented. The runtime calls `start(input, context)` if no state exists, then calls `resume(state, context)` on each slice.
 
 ## 4. ActionResult
@@ -66,6 +67,8 @@ Execution modes:
 - `failed`: the action saves `error`, ActionRun status becomes `failed`, and the run is not requeued.
 
 For instant actions, current `runActionOnce` supports `done` and `failed`. Other result types from an instant action are treated as unsupported and produce a failed ActionRun.
+
+For async actions, `runAsyncActionOnce` supports `done`, `waiting`, and `failed`. A `yield` result is currently unsupported for async actions and produces a failed ActionRun while preserving returned state.
 
 ## 5. ActionRun Lifecycle
 
@@ -91,7 +94,7 @@ createActionRun
          └─ failed -> save error -> failed
 ```
 
-`resumeActionRun` does not implement async action behavior. If called with a non-sliceable action, it returns a failed ActionRun.
+`runAsyncActionOnce` provides minimal async action execution. It can produce `done`, `waiting`, or `failed`, but it does not connect waiting actions to an event trigger or external resume system. `resumeActionRun` remains sliceable-only. If called with a non-sliceable action, it returns a failed ActionRun.
 
 ## 6. Flow Definition
 
@@ -196,7 +199,7 @@ A parallel node has `branches`.
 
 The following are not implemented:
 
-- async action is not fully implemented.
+- async action has minimal ActionRun-level support, but FlowEngine is not wired to execute async actions and there is no event recovery system.
 - StateStore is currently an in-memory skeleton/basic record store, not a persistence or recovery system.
 - Package Manifest support is only a description format and lightweight validator; it does not load external code.
 - There is no permission model.
