@@ -13,6 +13,7 @@ This specification describes the core behavior currently implemented in ActionFl
 - ActionFlowRuntime facade composition for core in-memory components
 - in-memory FlowRegistry management for FlowDefinition records
 - in-memory run records used by the current runtime
+- FileStateStore local JSON persistence for ActionRun and FlowRun records
 - package manifest shape, lightweight validation, and optional registry consistency checks
 - event trigger shape, lightweight validation, and in-memory registry
 
@@ -36,7 +37,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **SliceScheduler**: the component that advances ready sliceable ActionRuns within frame and slice budgets.
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
 - **ActionFlowRuntime**: a lightweight facade that wires registries, store, and FlowEngine together.
-- **StateStore**: the storage abstraction for run records. Current implementation is an in-memory skeleton, not a durable recovery system.
+- **StateStore**: storage abstraction for run records. Current implementations include MemoryStateStore and FileStateStore. FileStateStore persists ActionRun / FlowRun records only.
 - **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation and optional action/flow registry consistency checks.
 - **Event Trigger**: a descriptive rule that maps an event name to a flow id. Current support is validation and in-memory definition management only.
 
@@ -179,6 +180,8 @@ A sequence node has ordered `steps`.
 `ActionFlowRuntime` is a convenience facade over the current in-memory components.
 
 - It creates default `ActionRegistry`, `FlowRegistry`, `EventTriggerRegistry`, `MemoryStateStore`, and `FlowEngine` instances when dependencies are not provided.
+- The default store remains `MemoryStateStore`.
+- `FileStateStore` can be injected through dependencies.
 - It exposes `actions`, `flows`, `triggers`, `store`, and `engine`.
 - `createRun(flowId, runId, version?)` resolves a flow from `FlowRegistry`, creates a FlowRun through `FlowEngine`, saves it to the store, and returns it.
 - `tick(run, flowId, options?, version?)` resolves a flow, advances it through `FlowEngine`, saves the updated FlowRun, and saves contained ActionRuns.
@@ -187,6 +190,7 @@ A sequence node has ordered `steps`.
 - It does not install packages, load code, or execute flows during package checks.
 - It does not automatically execute triggers.
 - It does not provide persistent recovery.
+- Injecting `FileStateStore` does not add durable recovery.
 
 ## 10. Parallel Semantics
 
@@ -226,12 +230,27 @@ A parallel node has `branches`.
 - `failedRuns`
 - `waitingRuns`
 
-## 12. Current Limitations
+## 12. FileStateStore
+
+`FileStateStore` implements `StateStore`.
+
+- It stores ActionRun and FlowRun records as JSON files under a configured `rootDir`.
+- It uses file envelopes with `schemaVersion`, `kind`, `savedAt`, and `data`.
+- It uses `safeFileName` for ids.
+- It uses `createEnvelope` and `parseEnvelope` for file format handling.
+- It rejects non-JSON-compatible data.
+- It is useful for local development and inspection.
+- It is not a durable recovery system.
+- It does not persist FlowDefinition or EventTriggerDefinition.
+- It does not provide event recovery.
+- It does not guarantee multi-process write safety.
+
+## 13. Current Limitations
 
 The following are not implemented:
 
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
-- StateStore is currently an in-memory skeleton/basic record store, not a persistence or recovery system.
+- FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.
@@ -240,7 +259,7 @@ The following are not implemented:
 - Event Trigger support is limited to a description format, lightweight validator, and in-memory registry; it does not automatically start flows or recover waiting async actions.
 - There is no complete schema validation.
 
-## 13. Event Trigger Definition
+## 14. Event Trigger Definition
 
 `EventTriggerDefinition` is a descriptive structure for future event-based flow starts and waiting-action recovery:
 
@@ -254,7 +273,7 @@ The following are not implemented:
 
 Current support includes `EventTriggerDefinition`, `validateEventTrigger(trigger)`, and `EventTriggerRegistry`. The registry only manages trigger definitions in memory. It does not validate whether the target flow exists, automatically start flows, provide an event bus, or resume waiting async actions from events.
 
-## 14. Compatibility Rules
+## 15. Compatibility Rules
 
 Future development should preserve these rules:
 
