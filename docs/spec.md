@@ -37,7 +37,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **SliceScheduler**: the component that advances ready sliceable ActionRuns within frame and slice budgets.
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
 - **ActionFlowRuntime**: a lightweight facade that wires registries, store, and FlowEngine together.
-- **StateStore**: storage abstraction for run records. Current implementations include MemoryStateStore and FileStateStore. FileStateStore persists ActionRun / FlowRun records only. `BatchStateStore` is an optional extension currently implemented by MemoryStateStore.
+- **StateStore**: storage abstraction for run records. Current implementations include MemoryStateStore and FileStateStore. FileStateStore persists ActionRun / FlowRun records only. `BatchStateStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore.
 - **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation and optional action/flow registry consistency checks.
 - **Event Trigger**: a descriptive rule that maps an event name to a flow id. Current support is validation and in-memory definition management only.
 
@@ -244,13 +244,14 @@ A parallel node has `branches`.
 - It uses `safeFileName` for ids.
 - It uses `createEnvelope` and `parseEnvelope` for file format handling.
 - It rejects non-JSON-compatible data.
+- It implements best-effort `saveRunBatch` for ActionRun / FlowRun records.
 - It can persist yielded sliceable ActionRun records as long as action state is JSON-compatible.
 - It can be used with `ActionFlowRuntime.restoreRun` for local record reload.
 - `restoreRun` can reload yielded sliceable ActionRun records, and a later explicit `tick` can continue execution.
 - It is useful for local development and inspection.
 - It is not a durable recovery system.
+- It does not provide atomic multi-file transactions.
 - It does not persist FlowDefinition or EventTriggerDefinition.
-- It does not implement batch save yet.
 - It does not provide event recovery.
 - It does not guarantee multi-process write safety.
 

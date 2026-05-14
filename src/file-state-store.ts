@@ -10,7 +10,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-import type { StateStore } from "./state-store.js";
+import type { BatchStateStore, StateStoreRunBatch } from "./state-store.js";
 import type { ActionRunRecord, FlowRunRecord } from "./types.js";
 import { createEnvelope, parseEnvelope, safeFileName } from "./file-state-store-utils.js";
 
@@ -18,7 +18,7 @@ export interface FileStateStoreOptions {
   rootDir: string;
 }
 
-export class FileStateStore implements StateStore {
+export class FileStateStore implements BatchStateStore {
   private readonly rootDir: string;
   private readonly actionRunsDir: string;
   private readonly flowRunsDir: string;
@@ -48,6 +48,16 @@ export class FileStateStore implements StateStore {
 
   saveFlowRun(run: FlowRunRecord): void {
     this.writeRecord(this.flowRunsDir, run.id, "flowRun", run);
+  }
+
+  saveRunBatch(batch: StateStoreRunBatch): void {
+    if (batch.flowRun) {
+      this.saveFlowRun(batch.flowRun);
+    }
+
+    for (const actionRun of batch.actionRuns ?? []) {
+      this.saveActionRun(actionRun);
+    }
   }
 
   getFlowRun(flowRunId: string): FlowRunRecord | undefined {

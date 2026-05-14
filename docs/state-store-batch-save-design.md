@@ -1,6 +1,6 @@
 # StateStore Batch Save Design
 
-This document proposes a minimal batch-save interface for StateStore implementations. It is a design document only; no runtime behavior is implemented here.
+This document describes the batch-save interface for StateStore implementations and tracks its implementation phases.
 
 ## 1. Problem
 
@@ -78,13 +78,13 @@ In-memory writes are not expected to fail under normal operation, so this mostly
 
 ## 7. FileStateStore Behavior
 
-Suggested FileStateStore phases:
+FileStateStore phases:
 
-- Phase 1: best-effort batch save. Write records in a clear order and throw on failure.
-- Phase 2: staging directory. Write all target files into a staging area before moving them into place.
-- Phase 3: commit marker / manifest. Record batch membership and commit status so startup or restore tooling can detect incomplete batches.
+- Phase 1: best-effort batch save. Write records in a clear order and throw on failure. Implemented.
+- Phase 2: staging directory. Write all target files into a staging area before moving them into place. Not implemented.
+- Phase 3: commit marker / manifest. Record batch membership and commit status so startup or restore tooling can detect incomplete batches. Not implemented.
 
-The MVP should not claim full atomicity. Windows rename and replace behavior needs careful handling, especially when target files already exist or are held open by another process.
+The current FileStateStore batch save is best-effort only. It is not an atomic transaction. Windows rename and replace behavior needs careful handling, especially when target files already exist or are held open by another process.
 
 ## 8. Error Handling
 
@@ -125,11 +125,13 @@ Phase 2:
 
 - Add `FileStateStore` best-effort `saveRunBatch`.
 
-Status: not implemented.
+Status: implemented. FileStateStore writes the FlowRun first, then ActionRuns in order, and throws on failure without rollback.
 
 Phase 3:
 
 - Design FileStateStore staging / commit marker behavior.
+
+Status: not implemented.
 
 Phase 4:
 

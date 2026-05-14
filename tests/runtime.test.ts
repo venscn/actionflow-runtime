@@ -141,6 +141,36 @@ describe("ActionFlowRuntime", () => {
     });
   });
 
+  it("uses saveRunBatch when ticking with FileStateStore", async () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "actionflow-runtime-file-store-batch-"));
+    tempDirs.push(rootDir);
+    const fileStore = new RecordingFileStateStore({ rootDir });
+    const runtime = new ActionFlowRuntime({ stateStore: fileStore });
+    const flow: FlowDefinition = {
+      id: "flow.basic",
+      version: "1.0.0",
+      root: {
+        type: "action",
+        id: "node-1",
+        action: "echo",
+        input: null
+      }
+    };
+
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(flow);
+
+    const initialRun = runtime.createRun("flow.basic", "flow-run-1");
+    const nextRun = await runtime.tick(initialRun, "flow.basic");
+
+    expect(fileStore.batchCalls).toHaveLength(1);
+    expect(fileStore.getFlowRun("flow-run-1")).toEqual(nextRun);
+    expect(fileStore.getActionRun("flow-run-1:node-1")).toMatchObject({
+      status: "done",
+      output: "ok"
+    });
+  });
+
   it("uses saveRunBatch when the store supports it", async () => {
     const store = new RecordingBatchStateStore();
     const runtime = new ActionFlowRuntime({ stateStore: store });
@@ -666,6 +696,15 @@ function createCounterAction(limit: number): ActionDefinition<number, number, { 
 }
 
 class RecordingBatchStateStore extends MemoryStateStore {
+  readonly batchCalls: StateStoreRunBatch[] = [];
+
+  override saveRunBatch(batch: StateStoreRunBatch): void {
+    this.batchCalls.push(batch);
+    super.saveRunBatch(batch);
+  }
+}
+
+class RecordingFileStateStore extends FileStateStore {
   readonly batchCalls: StateStoreRunBatch[] = [];
 
   override saveRunBatch(batch: StateStoreRunBatch): void {

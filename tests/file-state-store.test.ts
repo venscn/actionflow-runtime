@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { createEnvelope, FileStateStore, safeFileName } from "../src/index.js";
+import { ActionFlowRuntime, createEnvelope, FileStateStore, safeFileName, supportsRunBatch } from "../src/index.js";
 import type { ActionRunRecord, FlowRunRecord } from "../src/index.js";
 
 describe("FileStateStore", () => {
@@ -175,6 +175,88 @@ describe("FileStateStore", () => {
 
     expect(existsSync(outsideFile)).toBe(true);
     expect(existsSync(rootDir)).toBe(true);
+  });
+
+  it("saveRunBatch saves a FlowRun and ActionRuns", () => {
+    const store = createStore();
+    const flowRun = createFlowRun("flow-run-1", "running");
+    const firstActionRun = createActionRun("flow-run-1:node-1", "done");
+    const secondActionRun = createActionRun("flow-run-1:node-2", "ready");
+
+    store.saveRunBatch({
+      flowRun,
+      actionRuns: [firstActionRun, secondActionRun]
+    });
+
+    expect(store.getFlowRun("flow-run-1")).toEqual(flowRun);
+    expect(store.listActionRuns()).toEqual(expect.arrayContaining([firstActionRun, secondActionRun]));
+  });
+
+  it("saveRunBatch handles a missing FlowRun", () => {
+    const store = createStore();
+    const actionRun = createActionRun("flow-run-1:node-1", "done");
+
+    store.saveRunBatch({
+      actionRuns: [actionRun]
+    });
+
+    expect(store.listFlowRuns()).toEqual([]);
+    expect(store.getActionRun("flow-run-1:node-1")).toEqual(actionRun);
+  });
+
+  it("saveRunBatch handles missing ActionRuns", () => {
+    const store = createStore();
+    const flowRun = createFlowRun("flow-run-1", "running");
+
+    store.saveRunBatch({ flowRun });
+
+    expect(store.getFlowRun("flow-run-1")).toEqual(flowRun);
+    expect(store.listActionRuns()).toEqual([]);
+  });
+
+  it("saveRunBatch handles empty ActionRuns", () => {
+    const store = createStore();
+    const flowRun = createFlowRun("flow-run-1", "running");
+
+    store.saveRunBatch({
+      flowRun,
+      actionRuns: []
+    });
+
+    expect(store.getFlowRun("flow-run-1")).toEqual(flowRun);
+    expect(store.listActionRuns()).toEqual([]);
+  });
+
+  it("supportsRunBatch returns true for FileStateStore", () => {
+    expect(supportsRunBatch(createStore())).toBe(true);
+  });
+
+  it("saveRunBatch propagates non-serializable ActionRun errors", () => {
+    const store = createStore();
+    const actionRun = { ...createActionRun("flow-run-1:node-1", "ready"), state: undefined };
+
+    expect(() =>
+      store.saveRunBatch({
+        actionRuns: [actionRun]
+      })
+    ).toThrow("$.state");
+  });
+
+  it("saveRunBatch writes records that restoreRun can reload", () => {
+    const store = createStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [{ ...createActionRun("flow-run-1:node-1", "done"), output: "ok" }]
+    });
+
+    const restored = runtime.restoreRun("flow-run-1");
+
+    expect(restored.actionRuns["node-1"]).toMatchObject({
+      runId: "flow-run-1:node-1",
+      output: "ok"
+    });
   });
 
   function createStore(): FileStateStore {
