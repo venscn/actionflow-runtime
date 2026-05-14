@@ -182,7 +182,9 @@ A sequence node has ordered `steps`.
 - It exposes `actions`, `flows`, `triggers`, `store`, and `engine`.
 - `createRun(flowId, runId, version?)` resolves a flow from `FlowRegistry`, creates a FlowRun through `FlowEngine`, saves it to the store, and returns it.
 - `tick(run, flowId, options?, version?)` resolves a flow, advances it through `FlowEngine`, saves the updated FlowRun, and saves contained ActionRuns.
+- `checkPackageManifest(manifest)` first validates manifest structure, then checks referenced actions and flows against the runtime registries.
 - It does not add new execution semantics.
+- It does not install packages, load code, or execute flows during package checks.
 - It does not automatically execute triggers.
 - It does not provide persistent recovery.
 

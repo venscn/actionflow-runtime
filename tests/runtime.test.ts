@@ -109,6 +109,99 @@ describe("ActionFlowRuntime", () => {
     expect(runtime.triggers.has("trigger.created")).toBe(true);
     expect(runtime.store.listFlowRuns()).toEqual([]);
   });
+
+  it("checks package manifest structure before registry consistency", () => {
+    const runtime = new ActionFlowRuntime();
+
+    const result = runtime.checkPackageManifest({});
+
+    expect(result.valid).toBe(false);
+    expect(result).toMatchObject({
+      errors: expect.arrayContaining([
+        "id must be a non-empty string",
+        "name must be a non-empty string",
+        "version must be a non-empty string"
+      ])
+    });
+  });
+
+  it("reports missing manifest actions", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(
+      runtime.checkPackageManifest({
+        id: "pkg",
+        name: "Package",
+        version: "1.0.0",
+        actions: [{ id: "missing.action" }]
+      })
+    ).toEqual({
+      valid: false,
+      errors: ["Missing action: missing.action"]
+    });
+  });
+
+  it("reports missing manifest flows", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(
+      runtime.checkPackageManifest({
+        id: "pkg",
+        name: "Package",
+        version: "1.0.0",
+        flows: [{ id: "missing.flow" }]
+      })
+    ).toEqual({
+      valid: false,
+      errors: ["Missing flow: missing.flow"]
+    });
+  });
+
+  it("returns valid when manifest actions and flows exist", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+
+    expect(
+      runtime.checkPackageManifest({
+        id: "pkg",
+        name: "Package",
+        version: "1.0.0",
+        actions: [{ id: "echo", version: "1.0.0" }],
+        flows: [{ id: "flow.basic", version: "1.0.0" }]
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("does not check rules.flow", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(
+      runtime.checkPackageManifest({
+        id: "pkg",
+        name: "Package",
+        version: "1.0.0",
+        rules: [{ id: "rule.start", event: "demo.started", flow: "missing.flow" }]
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("does not register actions or flows and does not execute flows during package checks", () => {
+    const runtime = new ActionFlowRuntime();
+
+    const result = runtime.checkPackageManifest({
+      id: "pkg",
+      name: "Package",
+      version: "1.0.0"
+    });
+
+    expect(result).toEqual({ valid: true });
+    expect(runtime.actions.list()).toEqual([]);
+    expect(runtime.flows.list()).toEqual([]);
+    expect(runtime.store.listFlowRuns()).toEqual([]);
+    expect(runtime.store.listActionRuns()).toEqual([]);
+  });
 });
 
 function createInstantAction(id: string, output: string): ActionDefinition<unknown, string, never> {

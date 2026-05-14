@@ -86,6 +86,8 @@ runtime.registerFlow(flow);
 
 let run = runtime.createRun("flow.basic", "flow-run-1");
 run = await runtime.tick(run, "flow.basic");
+
+const packageCheck = runtime.checkPackageManifest(manifest);
 ```
 
 ## Basic Parallel Example

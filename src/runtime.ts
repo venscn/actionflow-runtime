@@ -2,6 +2,12 @@ import { ActionRegistry } from "./action-registry.js";
 import { EventTriggerRegistry, type EventTriggerDefinition } from "./event-trigger.js";
 import { FlowEngine, type FlowEngineRunRecord, type FlowTickOptions } from "./flow-engine.js";
 import { FlowRegistry } from "./flow-registry.js";
+import {
+  checkPackageManifestRegistries,
+  type PackageManifestRegistryCheckResult,
+  type PackageManifestValidationResult,
+  validatePackageManifest
+} from "./package-manifest.js";
 import { MemoryStateStore, type StateStore } from "./state-store.js";
 import type { ActionDefinition, FlowDefinition } from "./types.js";
 
@@ -37,6 +43,20 @@ export class ActionFlowRuntime {
 
   registerTrigger(trigger: EventTriggerDefinition): void {
     this.triggers.register(trigger);
+  }
+
+  checkPackageManifest(manifest: unknown): PackageManifestValidationResult | PackageManifestRegistryCheckResult {
+    const validation = validatePackageManifest(manifest);
+
+    if (!validation.valid) {
+      return validation;
+    }
+
+    return checkPackageManifestRegistries({
+      manifest: validation.manifest,
+      actions: this.actions,
+      flows: this.flows
+    });
   }
 
   createRun(flowId: string, runId: string, version?: string): FlowEngineRunRecord {
