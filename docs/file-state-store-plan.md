@@ -184,6 +184,8 @@ Phase 1:
 - safe file name helper
 - JSON serializability check
 
+Status: base helpers are implemented in `src/file-state-store-utils.ts`; FileStateStore itself is not implemented yet.
+
 Phase 2:
 
 - FileStateStore for ActionRun / FlowRun
