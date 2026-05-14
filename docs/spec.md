@@ -32,7 +32,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **SliceScheduler**: the component that advances ready sliceable ActionRuns within frame and slice budgets.
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
 - **StateStore**: the storage abstraction for run records. Current implementation is an in-memory skeleton, not a durable recovery system.
- - **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation only.
+- **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation only.
 
 ## 3. Action Definition
 
@@ -54,7 +54,7 @@ Action functions receive an `ActionContext`. Its `now()` and `deadline()` values
 Execution modes:
 
 - **instant**: implemented. The runtime calls `run(input, context)` once.
-- **async**: minimally implemented at the ActionRun layer through `runAsyncActionOnce`. FlowEngine does not execute async actions yet, and there is no event recovery system.
+- **async**: implemented for direct ActionRun execution through `runAsyncActionOnce` and for FlowEngine action nodes. Waiting actions can move a node or flow to `waiting`, but there is no event recovery system.
 - **sliceable**: implemented. The runtime calls `start(input, context)` if no state exists, then calls `resume(state, context)` on each slice.
 
 ## 4. ActionResult
@@ -94,7 +94,7 @@ createActionRun
          └─ failed -> save error -> failed
 ```
 
-`runAsyncActionOnce` provides minimal async action execution. It can produce `done`, `waiting`, or `failed`, but it does not connect waiting actions to an event trigger or external resume system. `resumeActionRun` remains sliceable-only. If called with a non-sliceable action, it returns a failed ActionRun.
+`runAsyncActionOnce` provides minimal async action execution. It can produce `done`, `waiting`, or `failed`, and FlowEngine can execute async action nodes. It does not connect waiting actions to an event trigger or external resume system. `resumeActionRun` remains sliceable-only. If called with a non-sliceable action, it returns a failed ActionRun.
 
 ## 6. Flow Definition
 
@@ -199,7 +199,7 @@ A parallel node has `branches`.
 
 The following are not implemented:
 
-- async action has minimal ActionRun-level support, but FlowEngine is not wired to execute async actions and there is no event recovery system.
+- async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - StateStore is currently an in-memory skeleton/basic record store, not a persistence or recovery system.
 - Package Manifest support is only a description format and lightweight validator; it does not load external code.
 - There is no permission model.

@@ -1,4 +1,4 @@
-import { createActionRun, resumeActionRun, runActionOnce } from "./action-run.js";
+import { createActionRun, resumeActionRun, runActionOnce, runAsyncActionOnce } from "./action-run.js";
 import type { ActionRegistry } from "./action-registry.js";
 import { SliceScheduler } from "./slice-scheduler.js";
 import type {
@@ -16,6 +16,7 @@ export interface FlowNodeRunRecord {
   status: FlowRunStatus;
   actionRunId?: string;
   output?: unknown;
+  waitReason?: string;
   error?: unknown;
 }
 
@@ -290,10 +291,13 @@ export class FlowEngine {
         actionVersion: action.version,
         input: node.input
       });
-    const nextActionRun =
-      action.mode === "sliceable"
-        ? await resumeActionRun({ run: actionRun, action, context })
-        : await runActionOnce({ runId: actionRunId, action, input: node.input, context });
+    const nextActionRun = await runActionNodeByMode({
+      actionRun,
+      action,
+      context,
+      input: node.input,
+      runId: actionRunId
+    });
 
     flowRun.actionRuns[node.id] = nextActionRun;
     flowRun.nodeRuns[node.id] = {
@@ -301,6 +305,7 @@ export class FlowEngine {
       status: actionStatusToFlowStatus(nextActionRun.status),
       actionRunId: nextActionRun.runId,
       output: nextActionRun.output,
+      waitReason: nextActionRun.waitReason,
       error: nextActionRun.error
     };
 
@@ -309,6 +314,46 @@ export class FlowEngine {
       status: actionStatusToFlowStatus(nextActionRun.status)
     };
   }
+}
+
+async function runActionNodeByMode(params: {
+  actionRun: ActionRunRecord;
+  action: NonNullable<ReturnType<ActionRegistry["get"]>>;
+  context: ActionContext;
+  input?: unknown;
+  runId: string;
+}): Promise<ActionRunRecord> {
+  if (params.action.mode === "instant") {
+    return runActionOnce({
+      runId: params.runId,
+      action: params.action,
+      input: params.input,
+      context: params.context
+    });
+  }
+
+  if (params.action.mode === "async") {
+    return runAsyncActionOnce({
+      runId: params.runId,
+      action: params.action,
+      input: params.input,
+      context: params.context
+    });
+  }
+
+  if (params.action.mode === "sliceable") {
+    return resumeActionRun({
+      run: params.actionRun,
+      action: params.action,
+      context: params.context
+    });
+  }
+
+  return {
+    ...params.actionRun,
+    status: "failed",
+    error: new Error(`Unsupported action mode: ${String(params.action.mode)}`)
+  };
 }
 
 function actionStatusToFlowStatus(status: ActionRunRecord["status"]): FlowRunStatus {

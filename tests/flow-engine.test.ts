@@ -183,6 +183,116 @@ describe("FlowEngine", () => {
     expect(secondRun.nodeRuns["waiting-branch"]?.status).toBe("waiting");
     expect(secondRun.nodeRuns["active-branch"]?.status).toBe("done");
   });
+
+  it("runs a single async action root that returns done", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createAsyncDoneAction("async-done", "async-output"));
+    const flow: FlowDefinition = {
+      id: "flow",
+      version: "1.0.0",
+      root: { type: "action", id: "async-node", action: "async-done", input: "x" }
+    };
+    const engine = new FlowEngine(registry);
+
+    const run = await engine.tick(engine.createRun("flow-run-1", flow), flow);
+
+    expect(run.status).toBe("done");
+    expect(run.nodeRuns["async-node"]).toMatchObject({ status: "done", output: "async-output" });
+  });
+
+  it("continues sequence after an async action returns done", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createAsyncDoneAction("async-done", "async-output"));
+    registry.register(createInstantAction("after", "after-output"));
+    const flow = createSequenceFlow([
+      { type: "action", id: "async-node", action: "async-done" },
+      { type: "action", id: "after-node", action: "after" }
+    ]);
+    const engine = new FlowEngine(registry);
+
+    const run = await engine.tick(engine.createRun("flow-run-1", flow), flow);
+
+    expect(run.status).toBe("done");
+    expect(run.nodeRuns["async-node"]).toMatchObject({ status: "done", output: "async-output" });
+    expect(run.nodeRuns["after-node"]).toMatchObject({ status: "done", output: "after-output" });
+  });
+
+  it("marks flow waiting when an async action returns waiting", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createAsyncWaitingAction("async-waiting"));
+    const flow: FlowDefinition = {
+      id: "flow",
+      version: "1.0.0",
+      root: { type: "action", id: "async-node", action: "async-waiting" }
+    };
+    const engine = new FlowEngine(registry);
+
+    const run = await engine.tick(engine.createRun("flow-run-1", flow), flow);
+
+    expect(run.status).toBe("waiting");
+    expect(run.nodeRuns["async-node"]).toMatchObject({
+      status: "waiting",
+      waitReason: "external-event"
+    });
+    expect(run.actionRuns["async-node"]?.state).toEqual({ cursor: 1 });
+  });
+
+  it("marks flow failed when an async action returns failed", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createAsyncFailedAction("async-failed"));
+    const flow: FlowDefinition = {
+      id: "flow",
+      version: "1.0.0",
+      root: { type: "action", id: "async-node", action: "async-failed" }
+    };
+    const engine = new FlowEngine(registry);
+
+    const run = await engine.tick(engine.createRun("flow-run-1", flow), flow);
+
+    expect(run.status).toBe("failed");
+    expect(run.nodeRuns["async-node"]?.status).toBe("failed");
+  });
+
+  it("marks parallel done with async done and sliceable done branches", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createAsyncDoneAction("async-done", "async-output"));
+    registry.register(createCounterAction(1));
+    const flow = createParallelFlow([
+      { type: "action", id: "async-branch", action: "async-done" },
+      { type: "action", id: "slice-branch", action: "counter", input: 0 }
+    ]);
+    const engine = new FlowEngine(registry);
+
+    const run = await engine.tick(engine.createRun("flow-run-1", flow), flow, { frameBudgetMs: 2, maxSliceMs: 1 });
+
+    expect(run.status).toBe("done");
+    expect(run.nodeRuns["async-branch"]).toMatchObject({ status: "done", output: "async-output" });
+    expect(run.nodeRuns["slice-branch"]).toMatchObject({ status: "done", output: 1 });
+  });
+
+  it("keeps parallel running for async waiting while a sliceable branch is active, then waiting", async () => {
+    const registry = new ActionRegistry();
+    registry.register(createAsyncWaitingAction("async-waiting"));
+    registry.register(createCounterAction(2));
+    const flow = createParallelFlow([
+      { type: "action", id: "async-branch", action: "async-waiting" },
+      { type: "action", id: "slice-branch", action: "counter", input: 0 }
+    ]);
+    const engine = new FlowEngine(registry);
+    const initialRun = engine.createRun("flow-run-1", flow);
+
+    const firstRun = await engine.tick(initialRun, flow, { frameBudgetMs: 1, maxSliceMs: 1 });
+    const secondRun = await engine.tick(firstRun, flow, { frameBudgetMs: 1, maxSliceMs: 1 });
+
+    expect(firstRun.status).toBe("running");
+    expect(firstRun.nodeRuns["async-branch"]).toMatchObject({
+      status: "waiting",
+      waitReason: "external-event"
+    });
+    expect(firstRun.nodeRuns["slice-branch"]?.status).toBe("running");
+    expect(secondRun.status).toBe("waiting");
+    expect(secondRun.nodeRuns["slice-branch"]?.status).toBe("done");
+  });
 });
 
 function createSequenceFlow(steps: FlowDefinition["root"][]): FlowDefinition {
@@ -230,6 +340,47 @@ function createFailedInstantAction(id: string): ActionDefinition<unknown, string
   const error = new Error("failed");
 
   return createInstantAction(id, "unused", () => ({ type: "failed", error }));
+}
+
+function createAsyncDoneAction(id: string, output: string): ActionDefinition<unknown, string, { cursor: number }> {
+  return {
+    id,
+    version: "1.0.0",
+    mode: "async",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    run: async () => ({ type: "done", output })
+  };
+}
+
+function createAsyncWaitingAction(id: string): ActionDefinition<unknown, string, { cursor: number }> {
+  return {
+    id,
+    version: "1.0.0",
+    mode: "async",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    run: async () => ({ type: "waiting", state: { cursor: 1 }, reason: "external-event" })
+  };
+}
+
+function createAsyncFailedAction(id: string): ActionDefinition<unknown, string, { cursor: number }> {
+  const error = new Error("async failed");
+
+  return {
+    id,
+    version: "1.0.0",
+    mode: "async",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    run: async () => ({ type: "failed", error })
+  };
 }
 
 function createWaitingAction(): ActionDefinition<number, number, { count: number }> {

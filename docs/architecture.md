@@ -39,7 +39,7 @@ The runtime stores state on the ActionRun. A sliceable action starts by producin
 
 Scheduling time uses runtime monotonic milliseconds, not wall-clock time. The values exposed through `ActionContext.now()`, `deadline()`, and `remainingMs()` are for frame and slice budget decisions.
 
-Async action support is currently minimal and lives at the ActionRun layer. `runAsyncActionOnce` can await `action.run()` and record `done`, `waiting`, or `failed`, but FlowEngine and event triggers do not yet provide full async waiting recovery.
+Async action support currently lives in ActionRun and FlowEngine action-node execution. `runAsyncActionOnce` can await `action.run()` and record `done`, `waiting`, or `failed`; FlowEngine can turn async waiting results into waiting nodes or flows. Event triggers do not yet provide async waiting recovery.
 
 ## FlowEngine vs SliceScheduler
 
@@ -96,7 +96,7 @@ Current action definitions include `sideEffects: string[]`. The runtime does not
 
 ## Extension Directions
 
-- **async action**: wire existing minimal ActionRun-level support into FlowEngine and external event recovery.
+- **async action**: add external event recovery for waiting async actions.
 - **state persistence**: persist FlowRun, ActionRun, node state, outputs, and errors outside memory.
 - **package manifest**: define metadata for action bundles, versions, side effects, and compatibility.
 - **worker action**: run actions in isolated workers or external processes.
