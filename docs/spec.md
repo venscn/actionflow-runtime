@@ -12,6 +12,7 @@ This specification describes the core behavior currently implemented in ActionFl
 - FlowEngine execution for action, sequence, and parallel nodes
 - in-memory run records used by the current runtime
 - package manifest shape and lightweight validation
+- event trigger shape and lightweight validation
 
 This specification does not cover a complete distributed workflow system, persistent recovery protocol, plugin marketplace, dynamic code loading, permission enforcement system, or AI agent framework.
 
@@ -33,6 +34,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
 - **StateStore**: the storage abstraction for run records. Current implementation is an in-memory skeleton, not a durable recovery system.
 - **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation only.
+- **Event Trigger**: a descriptive rule that maps an event name to a flow id. Current support is validation only.
 
 ## 3. Action Definition
 
@@ -206,10 +208,24 @@ The following are not implemented:
 - There is no sandbox.
 - There is no worker action support.
 - There is no variable template system.
-- There is no event trigger system.
+- Event Trigger support is only a description format and lightweight validator; it does not automatically start flows or recover waiting async actions.
 - There is no complete schema validation.
 
-## 11. Compatibility Rules
+## 11. Event Trigger Definition
+
+`EventTriggerDefinition` is a descriptive structure for future event-based flow starts and waiting-action recovery:
+
+- `id`: stable trigger identifier.
+- `event`: event name to match.
+- `flow`: flow id associated with the trigger.
+- `enabled`: optional boolean flag.
+- `description`: optional description.
+- `filter`: placeholder for future event matching metadata.
+- `input`: placeholder for future flow input mapping.
+
+Current support is limited to `validateEventTrigger(trigger)`. The runtime does not automatically start flows from triggers and does not resume waiting async actions from events.
+
+## 12. Compatibility Rules
 
 Future development should preserve these rules:
 
