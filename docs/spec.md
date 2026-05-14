@@ -10,6 +10,7 @@ This specification describes the core behavior currently implemented in ActionFl
 - sliceable ActionRun start/resume/yield/done/waiting/failed handling
 - frame-budgeted slice scheduling
 - FlowEngine execution for action, sequence, and parallel nodes
+- in-memory FlowRegistry management for FlowDefinition records
 - in-memory run records used by the current runtime
 - package manifest shape and lightweight validation
 - event trigger shape, lightweight validation, and in-memory registry
@@ -30,6 +31,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **Flow**: a JSON-serializable workflow definition with a root `FlowNode`.
 - **FlowRun**: one execution instance of a Flow, including node run records and action run records.
 - **FlowNode**: a node inside a Flow. Current node kinds are `action`, `sequence`, and `parallel`.
+- **FlowRegistry**: an in-memory registry for versioned FlowDefinition records.
 - **SliceScheduler**: the component that advances ready sliceable ActionRuns within frame and slice budgets.
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
 - **StateStore**: the storage abstraction for run records. Current implementation is an in-memory skeleton, not a durable recovery system.
@@ -158,6 +160,17 @@ A sequence node has ordered `steps`.
 - If a step becomes `failed`, the sequence becomes `failed` and later steps do not execute.
 - If a sliceable action step yields, the FlowRun remains `running`; the next tick continues the same node.
 - A sequence becomes `done` when all steps are done.
+
+## 7.1 FlowRegistry
+
+`FlowRegistry` manages `FlowDefinition` records in memory.
+
+- It supports registration, lookup by id, lookup by id and version, listing, deletion, and clearing.
+- `get(id)` returns the latest registered version for that id using simple dotted-number comparison.
+- It validates only the minimal flow shape: non-empty `id`, non-empty `version`, and a present `root`.
+- It does not execute flows.
+- It does not persist flows.
+- It does not automatically integrate with `EventTriggerRegistry`.
 
 ## 8. Parallel Semantics
 

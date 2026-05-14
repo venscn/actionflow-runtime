@@ -18,6 +18,8 @@ ActionFlow Runtime
 │  ├─ action node execution
 │  ├─ sequence node execution
 │  └─ parallel node execution
+├─ FlowRegistry
+│  └─ in-memory versioned FlowDefinition lookup
 ├─ PackageManifest
 │  └─ descriptive package metadata validation
 ├─ EventTrigger
@@ -104,4 +106,5 @@ Current action definitions include `sideEffects: string[]`. The runtime does not
 - **package manifest**: define metadata for action bundles, versions, side effects, and compatibility.
 - **worker action**: run actions in isolated workers or external processes.
 - **event trigger**: currently a descriptive structure, validator, and in-memory registry only; future work can connect it to an event bus and waiting-action recovery.
+- **flow lookup**: future EventTriggerRegistry integration can use FlowRegistry to resolve flow ids before starting or resuming flows.
 - **permission model**: enforce declared side effects and external access policies.
