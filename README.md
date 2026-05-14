@@ -71,6 +71,11 @@ npm test
 npm run example:basic
 ```
 
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Specification](docs/spec.md)
+
 ## Basic Parallel Example
 
 Run:
