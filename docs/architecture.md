@@ -21,7 +21,8 @@ ActionFlow Runtime
 ├─ PackageManifest
 │  └─ descriptive package metadata validation
 ├─ EventTrigger
-│  └─ descriptive event-to-flow metadata validation
+│  ├─ descriptive event-to-flow metadata validation
+│  └─ in-memory EventTriggerRegistry
 └─ StateStore
    └─ current in-memory store skeleton
 ```
@@ -102,5 +103,5 @@ Current action definitions include `sideEffects: string[]`. The runtime does not
 - **state persistence**: persist FlowRun, ActionRun, node state, outputs, and errors outside memory.
 - **package manifest**: define metadata for action bundles, versions, side effects, and compatibility.
 - **worker action**: run actions in isolated workers or external processes.
-- **event trigger**: currently a descriptive structure and validator only; future work can connect it to an event bus and waiting-action recovery.
+- **event trigger**: currently a descriptive structure, validator, and in-memory registry only; future work can connect it to an event bus and waiting-action recovery.
 - **permission model**: enforce declared side effects and external access policies.
