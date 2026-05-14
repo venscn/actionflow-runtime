@@ -11,7 +11,7 @@ import {
   FlowRegistry,
   MemoryStateStore
 } from "../src/index.js";
-import type { ActionDefinition, FlowDefinition } from "../src/index.js";
+import type { ActionDefinition, FlowDefinition, FlowEngineRunRecord } from "../src/index.js";
 
 describe("ActionFlowRuntime", () => {
   const tempDirs: string[] = [];
@@ -184,6 +184,152 @@ describe("ActionFlowRuntime", () => {
     expect(restored.actionRuns["node-1"]).toMatchObject({
       runId: "flow-run-1:node-1",
       output: "ok"
+    });
+  });
+
+  it("restoreRun merges only ActionRuns matching the flowRunId prefix", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "running"
+    });
+    runtime.store.saveActionRun(createStoredActionRun("flow-run-1:node-1", "matching"));
+    runtime.store.saveActionRun(createStoredActionRun("other-flow-run:node-1", "other"));
+
+    const restored = runtime.restoreRun("flow-run-1");
+
+    expect(Object.keys(restored.actionRuns)).toEqual(["node-1"]);
+    expect(restored.actionRuns["node-1"]?.output).toBe("matching");
+  });
+
+  it("restoreRun uses the node id suffix after the prefix as the actionRuns key", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "running"
+    });
+    runtime.store.saveActionRun(createStoredActionRun("flow-run-1:branch-a", "ok"));
+
+    const restored = runtime.restoreRun("flow-run-1");
+
+    expect(restored.actionRuns["branch-a"]).toMatchObject({
+      runId: "flow-run-1:branch-a",
+      output: "ok"
+    });
+  });
+
+  it("restoreRun preserves nested-looking suffixes as complete actionRuns keys", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "running"
+    });
+    runtime.store.saveActionRun(createStoredActionRun("flow-run-1:parallel-root/branch-a", "slash"));
+    runtime.store.saveActionRun(createStoredActionRun("flow-run-1:parallel-root:branch-b", "colon"));
+
+    const restored = runtime.restoreRun("flow-run-1");
+
+    expect(restored.actionRuns["parallel-root/branch-a"]?.output).toBe("slash");
+    expect(restored.actionRuns["parallel-root:branch-b"]?.output).toBe("colon");
+  });
+
+  it("restoreRun lets standalone ActionRun records override embedded actionRuns with the same key", () => {
+    const runtime = new ActionFlowRuntime();
+    const flowRun: FlowEngineRunRecord = {
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "done",
+      nodeRuns: {},
+      actionRuns: {
+        "node-1": createStoredActionRun("flow-run-1:node-1", "old")
+      },
+      sequenceCursors: {},
+      parallelCursors: {}
+    };
+
+    runtime.store.saveFlowRun(flowRun);
+    runtime.store.saveActionRun(createStoredActionRun("flow-run-1:node-1", "new"));
+
+    const restored = runtime.restoreRun("flow-run-1");
+
+    expect(restored.actionRuns["node-1"]?.output).toBe("new");
+  });
+
+  it("restoreRun preserves existing nodeRuns and cursors from the saved FlowRun", () => {
+    const runtime = new ActionFlowRuntime();
+    const flowRun: FlowEngineRunRecord = {
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "running",
+      nodeRuns: {
+        "node-1": {
+          nodeId: "node-1",
+          status: "done",
+          output: "ok"
+        }
+      },
+      actionRuns: {},
+      sequenceCursors: {
+        root: 1
+      },
+      parallelCursors: {
+        "parallel-root": 2
+      }
+    };
+
+    runtime.store.saveFlowRun(flowRun);
+
+    const restored = runtime.restoreRun("flow-run-1");
+
+    expect(restored.nodeRuns["node-1"]).toMatchObject({
+      status: "done",
+      output: "ok"
+    });
+    expect(restored.sequenceCursors).toEqual({ root: 1 });
+    expect(restored.parallelCursors).toEqual({ "parallel-root": 2 });
+  });
+
+  it("restoreRun does not mutate or share nested saved FlowRun record objects", () => {
+    const runtime = new ActionFlowRuntime();
+    const flowRun: FlowEngineRunRecord = {
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "running",
+      nodeRuns: {
+        "node-1": {
+          nodeId: "node-1",
+          status: "running"
+        }
+      },
+      actionRuns: {},
+      sequenceCursors: {},
+      parallelCursors: {}
+    };
+
+    runtime.store.saveFlowRun(flowRun);
+
+    const restored = runtime.restoreRun("flow-run-1");
+    restored.nodeRuns["node-1"] = {
+      nodeId: "node-1",
+      status: "failed"
+    };
+    restored.sequenceCursors.root = 99;
+
+    const storedRun = runtime.store.getFlowRun("flow-run-1");
+
+    expect(storedRun).toMatchObject({
+      nodeRuns: {
+        "node-1": {
+          status: "running"
+        }
+      },
+      sequenceCursors: {}
     });
   });
 
@@ -396,6 +542,18 @@ function createInstantAction(id: string, output: string): ActionDefinition<unkno
     stateSchema: undefined,
     sideEffects: [],
     run: () => ({ type: "done", output })
+  };
+}
+
+function createStoredActionRun(runId: string, output: string) {
+  return {
+    id: runId,
+    runId,
+    actionId: "echo",
+    actionVersion: "1.0.0",
+    input: null,
+    status: "done" as const,
+    output
   };
 }
 
