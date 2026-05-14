@@ -8,6 +8,7 @@ const reportPath = resolve(reportDir, "compact-check-node.txt");
 mkdirSync(reportDir, { recursive: true });
 
 const lines = [];
+let hasFailure = false;
 
 function line(text = "") {
   lines.push(String(text));
@@ -31,6 +32,7 @@ function run(title, command) {
 
     line(output.trimEnd());
   } catch (error) {
+    hasFailure = true;
     line(`[COMMAND FAILED] ${command}`);
 
     if (error.stdout) {
@@ -118,19 +120,23 @@ run("typecheck", "npm run typecheck");
 run("test", "npm test");
 run("build", "npm run build");
 
-let hasExample = false;
+let exampleScripts = [];
 try {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-  hasExample = Boolean(pkg.scripts?.["example:basic"]);
+  exampleScripts = Object.keys(pkg.scripts ?? {})
+    .filter((scriptName) => scriptName.startsWith("example:"))
+    .sort();
 } catch {
-  hasExample = false;
+  exampleScripts = [];
 }
 
-if (hasExample) {
-  run("example basic", "npm run example:basic");
+if (exampleScripts.length > 0) {
+  for (const scriptName of exampleScripts) {
+    run(scriptName, `npm run ${scriptName}`);
+  }
 } else {
-  section("example basic");
-  line("Skipped: package.json has no example:basic script.");
+  section("examples");
+  line("No example:* scripts found.");
 }
 
 const changed = commandLines("git diff --name-only");
@@ -157,3 +163,7 @@ writeFileSync(reportPath, `${lines.join("\n")}\n`, {
 });
 
 console.log(`Report written to ${reportPath}`);
+
+if (hasFailure) {
+  process.exitCode = 1;
+}
