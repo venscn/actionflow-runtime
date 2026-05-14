@@ -1,20 +1,20 @@
-import type { Flow, FlowRunRecord, FlowRunStatus } from "./types.js";
+import type { FlowDefinition, FlowRunRecord, FlowRunStatus } from "./types.js";
 
 export function createFlowRun(params: {
   id: string;
-  flow: Flow;
+  flow: FlowDefinition;
   status?: FlowRunStatus;
 }): FlowRunRecord {
   return {
     id: params.id,
     flowId: params.flow.id,
-    currentNodeId: params.flow.nodes[0]?.id,
-    status: params.status ?? "pending"
+    currentNodeId: params.flow.root.id,
+    status: params.status ?? "ready"
   };
 }
 
 export class FlowEngine {
-  createRun(id: string, flow: Flow): FlowRunRecord {
+  createRun(id: string, flow: FlowDefinition): FlowRunRecord {
     return createFlowRun({ id, flow });
   }
 }

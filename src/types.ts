@@ -1,84 +1,193 @@
+/**
+ * JSON-compatible primitive values used for serializable runtime data.
+ */
 export type JsonPrimitive = string | number | boolean | null;
+
+/**
+ * JSON-compatible values accepted by flow definitions, inputs, outputs, and saved state.
+ */
 export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 
+/**
+ * JSON-compatible object shape.
+ */
 export interface JsonObject {
   [key: string]: JsonValue;
 }
 
-export type ActionMode = "instant" | "async" | "sliceable";
-export type SideEffectKind = "none" | "read" | "write" | "external";
+/**
+ * Declares how an action is expected to execute.
+ */
+export type ActionExecutionMode = "instant" | "async" | "sliceable";
 
-export interface ActionMetadata {
-  readonly id: string;
-  readonly mode: ActionMode;
-  readonly sideEffects: readonly SideEffectKind[];
-  readonly description?: string;
+/**
+ * Lifecycle status for one action execution.
+ */
+export type ActionStatus = "ready" | "running" | "waiting" | "done" | "failed";
+
+/**
+ * Runtime services exposed to action implementations.
+ */
+export interface ActionContext {
+  /**
+   * Returns the current runtime time as milliseconds since the Unix epoch.
+   */
+  now(): number;
+
+  /**
+   * Returns the execution deadline as milliseconds since the Unix epoch.
+   */
+  deadline(): number;
+
+  /**
+   * Returns the remaining execution budget in milliseconds.
+   */
+  remainingMs(): number;
+
+  /**
+   * Indicates whether the current action should yield before doing more work.
+   */
+  shouldYield(): boolean;
+
+  /**
+   * Emits a runtime-scoped log message.
+   */
+  log(message: string): void;
 }
 
-export interface ActionContext<TState extends JsonValue = JsonValue> {
-  readonly actionRunId: string;
-  readonly state?: TState;
+/**
+ * Result returned by an action start, run, or resume function.
+ */
+export type ActionResult<O, S> =
+  | {
+      /** The action paused and can resume later from the provided state. */
+      type: "yield";
+      state: S;
+    }
+  | {
+      /** The action completed successfully with an output value. */
+      type: "done";
+      output: O;
+    }
+  | {
+      /** The action is waiting on an external event or asynchronous condition. */
+      type: "waiting";
+      state: S;
+      reason: string;
+    }
+  | {
+      /** The action failed with an implementation or runtime error. */
+      type: "failed";
+      error: unknown;
+    };
+
+/**
+ * Defines one reusable action and the optional entry points supported by its execution mode.
+ */
+export interface ActionDefinition<I = unknown, O = unknown, S = unknown> {
+  /** Stable action identifier used by flow nodes. */
+  id: string;
+
+  /** Action definition version for compatibility and migration decisions. */
+  version: string;
+
+  /** Execution mode used by the runtime scheduler. */
+  mode: ActionExecutionMode;
+
+  /** Placeholder for input validation metadata. */
+  inputSchema: unknown;
+
+  /** Placeholder for output validation metadata. */
+  outputSchema: unknown;
+
+  /** Placeholder for serializable state validation metadata. */
+  stateSchema: unknown;
+
+  /** Explicit side effect labels declared by the action author. */
+  sideEffects: string[];
+
+  /** Starts a sliceable action and returns its initial serializable state. */
+  start?(input: I, context: ActionContext): S | Promise<S>;
+
+  /** Runs an instant or async action. */
+  run?(input: I, context: ActionContext): ActionResult<O, S> | Promise<ActionResult<O, S>>;
+
+  /** Resumes a sliceable or waiting action from serialized state. */
+  resume?(state: S, context: ActionContext): ActionResult<O, S> | Promise<ActionResult<O, S>>;
 }
 
-export interface ActionResult<TOutput extends JsonValue = JsonValue> {
-  readonly status: "completed";
-  readonly output?: TOutput;
+/**
+ * Public action type stored in the registry.
+ *
+ */
+export type RegisteredAction = ActionDefinition;
+
+/**
+ * A flow node that invokes one registered action.
+ */
+export interface ActionFlowNode {
+  type: "action";
+  id: string;
+  action: string;
+  input?: JsonValue;
 }
 
-export interface SliceYield<TState extends JsonValue = JsonValue> {
-  readonly status: "yielded";
-  readonly state: TState;
+/**
+ * A flow node that runs child nodes in order.
+ */
+export interface SequenceFlowNode {
+  type: "sequence";
+  id: string;
+  steps: FlowNode[];
 }
 
-export type SliceResult<
-  TOutput extends JsonValue = JsonValue,
-  TState extends JsonValue = JsonValue
-> = ActionResult<TOutput> | SliceYield<TState>;
-
-export interface Action<TInput extends JsonValue = JsonValue, TOutput extends JsonValue = JsonValue> {
-  readonly metadata: ActionMetadata;
-  run(input: TInput, context: ActionContext): ActionResult<TOutput> | Promise<ActionResult<TOutput>>;
+/**
+ * A flow node that allows child nodes to run concurrently.
+ */
+export interface ParallelFlowNode {
+  type: "parallel";
+  id: string;
+  branches: FlowNode[];
 }
 
-export interface SliceableAction<
-  TInput extends JsonValue = JsonValue,
-  TOutput extends JsonValue = JsonValue,
-  TState extends JsonValue = JsonValue
-> {
-  readonly metadata: ActionMetadata & { readonly mode: "sliceable" };
-  start(input: TInput, context: ActionContext): SliceResult<TOutput, TState> | Promise<SliceResult<TOutput, TState>>;
-  resume(state: TState, context: ActionContext<TState>): SliceResult<TOutput, TState> | Promise<SliceResult<TOutput, TState>>;
+/**
+ * Minimal flow node union reserved for action, sequence, and parallel execution.
+ */
+export type FlowNode = ActionFlowNode | SequenceFlowNode | ParallelFlowNode;
+
+/**
+ * Serializable workflow definition.
+ */
+export interface FlowDefinition {
+  id: string;
+  version: string;
+  root: FlowNode;
 }
 
-export type RegisteredAction = Action | SliceableAction;
+/**
+ * Lifecycle status for one flow execution.
+ */
+export type FlowRunStatus = "ready" | "running" | "waiting" | "done" | "failed";
 
-export interface ActionNode {
-  readonly id: string;
-  readonly actionId: string;
-  readonly input?: JsonValue;
-}
-
-export interface Flow {
-  readonly id: string;
-  readonly nodes: readonly ActionNode[];
-}
-
-export type ActionRunStatus = "pending" | "running" | "yielded" | "completed" | "failed";
-export type FlowRunStatus = "pending" | "running" | "completed" | "failed";
-
+/**
+ * Persisted record for one action execution instance.
+ */
 export interface ActionRunRecord {
-  readonly id: string;
-  readonly actionId: string;
-  readonly status: ActionRunStatus;
-  readonly input?: JsonValue;
-  readonly output?: JsonValue;
-  readonly state?: JsonValue;
-  readonly error?: string;
+  id: string;
+  actionId: string;
+  status: ActionStatus;
+  input?: JsonValue;
+  output?: JsonValue;
+  state?: JsonValue;
+  error?: unknown;
 }
 
+/**
+ * Persisted record for one flow execution instance.
+ */
 export interface FlowRunRecord {
-  readonly id: string;
-  readonly flowId: string;
-  readonly status: FlowRunStatus;
-  readonly currentNodeId?: string;
+  id: string;
+  flowId: string;
+  status: FlowRunStatus;
+  currentNodeId?: string;
 }

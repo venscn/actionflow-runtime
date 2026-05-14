@@ -1,15 +1,15 @@
-import type { ActionRunRecord, ActionRunStatus, JsonValue } from "./types.js";
+import type { ActionRunRecord, ActionStatus, JsonValue } from "./types.js";
 
 export function createActionRun(params: {
   id: string;
   actionId: string;
   input?: JsonValue;
-  status?: ActionRunStatus;
+  status?: ActionStatus;
 }): ActionRunRecord {
   return {
     id: params.id,
     actionId: params.actionId,
     input: params.input,
-    status: params.status ?? "pending"
+    status: params.status ?? "ready"
   };
 }

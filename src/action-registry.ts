@@ -4,7 +4,7 @@ export class ActionRegistry {
   private readonly actions = new Map<string, RegisteredAction>();
 
   register(action: RegisteredAction): void {
-    this.actions.set(action.metadata.id, action);
+    this.actions.set(action.id, action);
   }
 
   get(actionId: string): RegisteredAction | undefined {
