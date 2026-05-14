@@ -13,14 +13,14 @@ This specification describes the core behavior currently implemented in ActionFl
 - ActionFlowRuntime facade composition for core in-memory components
 - in-memory FlowRegistry management for FlowDefinition records
 - in-memory run records used by the current runtime
-- package manifest shape and lightweight validation
+- package manifest shape, lightweight validation, and optional registry consistency checks
 - event trigger shape, lightweight validation, and in-memory registry
 
 This specification does not cover a complete distributed workflow system, persistent recovery protocol, plugin marketplace, dynamic code loading, permission enforcement system, or AI agent framework.
 
 ActionFlow Runtime is not an AI Agent framework. It does not define prompts, LLM tool calls, model selection, agent planning, or AI API integration.
 
-ActionFlow Runtime is not a plugin market. It has a minimal package manifest description and validator, but no publishing protocol, dependency resolution, registry service, dynamic code loading, sandbox, or permission execution.
+ActionFlow Runtime is not a plugin market. It has a minimal package manifest description, validator, and optional registry consistency check, but no publishing protocol, dependency resolution, registry service, dynamic code loading, sandbox, or permission execution.
 
 ActionFlow Runtime is not a distributed workflow system. The current implementation is local and in-memory.
 
@@ -37,7 +37,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
 - **ActionFlowRuntime**: a lightweight facade that wires registries, store, and FlowEngine together.
 - **StateStore**: the storage abstraction for run records. Current implementation is an in-memory skeleton, not a durable recovery system.
-- **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation only.
+- **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation and optional action/flow registry consistency checks.
 - **Event Trigger**: a descriptive rule that maps an event name to a flow id. Current support is validation and in-memory definition management only.
 
 ## 3. Action Definition
@@ -230,7 +230,7 @@ The following are not implemented:
 
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - StateStore is currently an in-memory skeleton/basic record store, not a persistence or recovery system.
-- Package Manifest support is only a description format and lightweight validator; it does not load external code.
+- Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.
 - There is no worker action support.

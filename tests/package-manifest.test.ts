@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { validatePackageManifest } from "../src/index.js";
-import type { ActionFlowPackageManifest } from "../src/index.js";
+import { ActionRegistry, FlowRegistry, checkPackageManifestRegistries, validatePackageManifest } from "../src/index.js";
+import type { ActionDefinition, ActionFlowPackageManifest, FlowDefinition } from "../src/index.js";
 
 describe("validatePackageManifest", () => {
   it("accepts a valid manifest", () => {
@@ -137,11 +137,172 @@ describe("validatePackageManifest", () => {
   });
 });
 
+describe("checkPackageManifestRegistries", () => {
+  it("returns valid when all manifest actions exist", () => {
+    const actions = new ActionRegistry();
+    actions.register(createAction("text.uppercase", "1.0.0"));
+
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({ actions: [{ id: "text.uppercase" }] }),
+        actions
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("returns valid when all manifest flows exist", () => {
+    const flows = new FlowRegistry();
+    flows.register(createFlow("flow.basic", "1.0.0"));
+
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({ flows: [{ id: "flow.basic" }] }),
+        flows
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("returns missing action errors", () => {
+    const actions = new ActionRegistry();
+
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({ actions: [{ id: "text.uppercase" }] }),
+        actions
+      })
+    ).toEqual({
+      valid: false,
+      errors: ["Missing action: text.uppercase"]
+    });
+  });
+
+  it("returns missing flow errors", () => {
+    const flows = new FlowRegistry();
+
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({ flows: [{ id: "flow.basic" }] }),
+        flows
+      })
+    ).toEqual({
+      valid: false,
+      errors: ["Missing flow: flow.basic"]
+    });
+  });
+
+  it("checks exact versions for action and flow refs", () => {
+    const actions = new ActionRegistry();
+    const flows = new FlowRegistry();
+    actions.register(createAction("text.uppercase", "2.0.0"));
+    flows.register(createFlow("flow.basic", "2.0.0"));
+
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({
+          actions: [{ id: "text.uppercase", version: "1.0.0" }],
+          flows: [{ id: "flow.basic", version: "1.0.0" }]
+        }),
+        actions,
+        flows
+      })
+    ).toEqual({
+      valid: false,
+      errors: ["Missing action: text.uppercase@1.0.0", "Missing flow: flow.basic@1.0.0"]
+    });
+  });
+
+  it("returns multiple missing errors", () => {
+    const actions = new ActionRegistry();
+    const flows = new FlowRegistry();
+
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({
+          actions: [{ id: "text.uppercase" }, { id: "text.lowercase" }],
+          flows: [{ id: "flow.basic" }]
+        }),
+        actions,
+        flows
+      })
+    ).toEqual({
+      valid: false,
+      errors: [
+        "Missing action: text.uppercase",
+        "Missing action: text.lowercase",
+        "Missing flow: flow.basic"
+      ]
+    });
+  });
+
+  it("skips action checks when no action registry is provided", () => {
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({ actions: [{ id: "text.uppercase" }] })
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("skips flow checks when no flow registry is provided", () => {
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({ flows: [{ id: "flow.basic" }] })
+      })
+    ).toEqual({ valid: true });
+  });
+
+  it("does not check rules.flow", () => {
+    const flows = new FlowRegistry();
+
+    expect(
+      checkPackageManifestRegistries({
+        manifest: createTypedManifest({
+          rules: [{ id: "rule.start", event: "demo.started", flow: "missing.flow" }]
+        }),
+        flows
+      })
+    ).toEqual({ valid: true });
+  });
+});
+
 function createManifest(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
     id: "example.package",
     name: "Example Package",
     version: "1.0.0",
     ...overrides
+  };
+}
+
+function createTypedManifest(overrides: Partial<ActionFlowPackageManifest>): ActionFlowPackageManifest {
+  return {
+    id: "example.package",
+    name: "Example Package",
+    version: "1.0.0",
+    ...overrides
+  };
+}
+
+function createAction(id: string, version: string): ActionDefinition<unknown, string, never> {
+  return {
+    id,
+    version,
+    mode: "instant",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    run: () => ({ type: "done", output: "ok" })
+  };
+}
+
+function createFlow(id: string, version: string): FlowDefinition {
+  return {
+    id,
+    version,
+    root: {
+      type: "action",
+      id: "node-1",
+      action: "text.uppercase"
+    }
   };
 }

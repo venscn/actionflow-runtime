@@ -37,6 +37,21 @@ export type PackageManifestValidationResult =
       errors: string[];
     };
 
+export type PackageManifestRegistryCheckResult =
+  | {
+      valid: true;
+    }
+  | {
+      valid: false;
+      errors: string[];
+    };
+
+export interface PackageManifestRegistryCheckParams {
+  manifest: ActionFlowPackageManifest;
+  actions?: RegistryLookup;
+  flows?: RegistryLookup;
+}
+
 export function validatePackageManifest(manifest: unknown): PackageManifestValidationResult {
   const errors: string[] = [];
 
@@ -67,6 +82,47 @@ export function validatePackageManifest(manifest: unknown): PackageManifestValid
     valid: true,
     manifest: manifest as unknown as ActionFlowPackageManifest
   };
+}
+
+export function checkPackageManifestRegistries(
+  params: PackageManifestRegistryCheckParams
+): PackageManifestRegistryCheckResult {
+  const errors: string[] = [];
+
+  if (params.actions && params.manifest.actions) {
+    for (const action of params.manifest.actions) {
+      if (!params.actions.has(action.id, action.version)) {
+        errors.push(`Missing action: ${formatRef(action)}`);
+      }
+    }
+  }
+
+  if (params.flows && params.manifest.flows) {
+    for (const flow of params.manifest.flows) {
+      if (!params.flows.has(flow.id, flow.version)) {
+        errors.push(`Missing flow: ${formatRef(flow)}`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return {
+      valid: false,
+      errors
+    };
+  }
+
+  return {
+    valid: true
+  };
+}
+
+interface RegistryLookup {
+  has(id: string, version?: string): boolean;
+}
+
+function formatRef(ref: { id: string; version?: string }): string {
+  return ref.version ? `${ref.id}@${ref.version}` : ref.id;
 }
 
 function validateActions(manifest: Record<string, unknown>, errors: string[]): void {

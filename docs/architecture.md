@@ -23,7 +23,8 @@ ActionFlow Runtime
 ├─ FlowRegistry
 │  └─ in-memory versioned FlowDefinition lookup
 ├─ PackageManifest
-│  └─ descriptive package metadata validation
+│  ├─ descriptive package metadata validation
+│  └─ optional action/flow registry consistency check
 ├─ EventTrigger
 │  ├─ descriptive event-to-flow metadata validation
 │  └─ in-memory EventTriggerRegistry
