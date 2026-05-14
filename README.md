@@ -59,9 +59,9 @@ A Flow describes what should run. A FlowRun records one execution of that Flow. 
 
 ## Execution Modes
 
-- **instant**: runs once with `run(input, context)` and returns `done` or `failed`.
-- **async**: reserved in the type system, but not implemented yet.
-- **sliceable**: starts with `start(input, context)` to create state, then advances with `resume(state, context)` until it yields, waits, fails, or completes.
+- **instant**: implemented through `run(input, context)`.
+- **async**: supported through `runAsyncActionOnce` and FlowEngine action nodes; waiting can move flows to `waiting`, but there is no event recovery system yet.
+- **sliceable**: implemented through `start` / `resume` / `yield` / `done` / `waiting` / `failed`.
 
 ## Quickstart
 
@@ -75,6 +75,18 @@ npm run example:basic
 
 - [Architecture](docs/architecture.md)
 - [Specification](docs/spec.md)
+
+## Facade Example
+
+```ts
+const runtime = new ActionFlowRuntime();
+
+runtime.registerAction(action);
+runtime.registerFlow(flow);
+
+let run = runtime.createRun("flow.basic", "flow-run-1");
+run = await runtime.tick(run, "flow.basic");
+```
 
 ## Basic Parallel Example
 
@@ -110,26 +122,32 @@ Implemented:
 
 - versioned `ActionRegistry`
 - instant ActionRun execution
+- minimal async action execution
 - sliceable ActionRun resume
 - in-memory SliceScheduler
 - FlowEngine support for action, sequence, and parallel nodes
+- FlowEngine support for async action nodes
+- FlowRegistry
+- EventTriggerDefinition / EventTriggerRegistry
+- PackageManifest validation
+- ActionFlowRuntime facade
 - in-memory run records
 
 Not implemented yet:
 
-- async action behavior
 - persistent state store integration
-- variable or template binding between flow nodes
+- variable/template binding between flow nodes
 - durable event wakeup for waiting actions
 - worker process execution
 - permission enforcement
-- package manifest format
+- event bus / automatic trigger execution
+- full schema validation
 
 ## Roadmap
 
-- Add async action execution and external wakeup support.
+- Add event recovery for waiting async actions.
 - Add persistent state storage for FlowRun and ActionRun records.
-- Define package manifests for distributing action bundles.
+- Expand package manifest loading / compatibility / permissions.
 - Add worker action execution for isolated or long-running work.
 - Add event triggers that can start or resume flows.
 - Add a permission model for explicit side effects and external access.

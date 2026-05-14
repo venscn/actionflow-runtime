@@ -10,6 +10,7 @@ This specification describes the core behavior currently implemented in ActionFl
 - sliceable ActionRun start/resume/yield/done/waiting/failed handling
 - frame-budgeted slice scheduling
 - FlowEngine execution for action, sequence, and parallel nodes
+- ActionFlowRuntime facade composition for core in-memory components
 - in-memory FlowRegistry management for FlowDefinition records
 - in-memory run records used by the current runtime
 - package manifest shape and lightweight validation
@@ -34,6 +35,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **FlowRegistry**: an in-memory registry for versioned FlowDefinition records.
 - **SliceScheduler**: the component that advances ready sliceable ActionRuns within frame and slice budgets.
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
+- **ActionFlowRuntime**: a lightweight facade that wires registries, store, and FlowEngine together.
 - **StateStore**: the storage abstraction for run records. Current implementation is an in-memory skeleton, not a durable recovery system.
 - **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation only.
 - **Event Trigger**: a descriptive rule that maps an event name to a flow id. Current support is validation and in-memory definition management only.
@@ -171,6 +173,18 @@ A sequence node has ordered `steps`.
 - It does not execute flows.
 - It does not persist flows.
 - It does not automatically integrate with `EventTriggerRegistry`.
+
+## 7.2 ActionFlowRuntime
+
+`ActionFlowRuntime` is a convenience facade over the current in-memory components.
+
+- It creates default `ActionRegistry`, `FlowRegistry`, `EventTriggerRegistry`, `MemoryStateStore`, and `FlowEngine` instances when dependencies are not provided.
+- It exposes `actions`, `flows`, `triggers`, `store`, and `engine`.
+- `createRun(flowId, runId, version?)` resolves a flow from `FlowRegistry`, creates a FlowRun through `FlowEngine`, saves it to the store, and returns it.
+- `tick(run, flowId, options?, version?)` resolves a flow, advances it through `FlowEngine`, saves the updated FlowRun, and saves contained ActionRuns.
+- It does not add new execution semantics.
+- It does not automatically execute triggers.
+- It does not provide persistent recovery.
 
 ## 8. Parallel Semantics
 

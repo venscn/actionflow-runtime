@@ -6,6 +6,8 @@ This document describes the current ActionFlow Runtime architecture and the inte
 
 ```text
 ActionFlow Runtime
+├─ ActionFlowRuntime
+│  └─ facade wiring registries, store, and FlowEngine
 ├─ ActionRegistry
 │  └─ versioned ActionDefinition lookup
 ├─ ActionRun
