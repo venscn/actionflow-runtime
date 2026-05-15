@@ -48,6 +48,7 @@ Current implemented pieces:
 - `ActionFlowRuntime.matchWaitingRuns(event)` read-only matching.
 - `ActionFlowRuntime.previewEventRecovery(event)` read-only restore preview.
 - `ActionFlowRuntime.recoverWaitingRuns(event)` match/preview-only recovery result integration.
+- `ActionFlowRuntime.tickRecoveredRuns(result, options)` explicit host-called tick helper.
 - Explicit `ActionFlowRuntime` processed event record accessors when the configured store supports `ProcessedEventStore`.
 - `EventTriggerRegistry` definitions.
 - FileStateStore local persistence.
@@ -139,7 +140,7 @@ The implemented `recoverWaitingRuns(event)` API returns match/preview recovery r
 - Keeps control with the host.
 - Requires the host to know flow id, version, and actions.
 
-See [Event Recovery Resume Policy](event-recovery-resume-policy.md) and [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the explicit resume/tick strategy. The current `recoverWaitingRuns` API is match/preview-only; explicit tick recovery and automatic wakeup are not implemented.
+See [Event Recovery Resume Policy](event-recovery-resume-policy.md) and [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the explicit resume/tick strategy. The current `recoverWaitingRuns` API is match/preview-only; `tickRecoveredRuns` is available only as an explicit host-called helper. Automatic wakeup is not implemented.
 
 ### Strategy C: Wake token / state mutation
 
@@ -235,8 +236,8 @@ Phase 5:
 
 Phase 6:
 
-- Design explicit resume/tick policy. Documented in [Event Recovery Resume Policy](event-recovery-resume-policy.md), not implemented.
-- Design explicit tick recovery helper strategy. Documented in [Explicit Tick Recovery Design](explicit-tick-recovery-design.md), not implemented.
+- Design explicit resume/tick policy. Documented in [Event Recovery Resume Policy](event-recovery-resume-policy.md).
+- Add explicit `tickRecoveredRuns` helper. Implemented.
 
 Phase 7:
 
@@ -269,13 +270,16 @@ Implemented tests currently cover:
 - `recoverWaitingRuns` writes observe-only `started`, `completed`, and `failed` processed event records when supported.
 - `recoverWaitingRuns` does not tick, mutate waiting index, execute triggers, skip duplicate events, or provide exactly-once behavior.
 - `recoverWaitingRuns` validates runtime events and surfaces waiting index errors.
+- `tickRecoveredRuns` explicitly ticks recovered runs when called by the host.
+- `tickRecoveredRuns` supports `dryRun`, `maxRuns`, and `continueOnError`.
+- `tickRecoveredRuns` does not execute triggers or write processed event records.
 
 Remaining future tests should cover:
 
 - Multiple waiting entries match one event.
 - Stale waiting index entry is reported.
 - Corrupted waiting index surfaces an error.
-- Explicit resume/tick recovery behavior once implemented.
+- More complex explicit tick recovery behavior.
 - Duplicate event skip behavior once designed.
 
 ## 16. Open Questions

@@ -6,7 +6,7 @@
 
 Real recovery still needs policy decisions: whether to tick, when to tick, which runs to tick, and how to handle errors. If runtime automatically ticks after every event, it may repeat execution, run without registered actions or flows, or resume the wrong run for a loosely matched event.
 
-That means resume/tick recovery needs an explicit policy. It should not be introduced as automatic wakeup. See [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the proposed no-automatic-tick helper design.
+That means resume/tick recovery needs an explicit policy. It should not be introduced as automatic wakeup. See [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the implemented no-automatic-tick helper design.
 
 ## 2. Current Recovery Capabilities
 
@@ -17,8 +17,10 @@ Current implemented capabilities:
 - `previewEventRecovery(event)` restores matching FlowRun records for preview.
 - `recoverWaitingRuns(event)` follows preview-only behavior.
 - `recoverWaitingRuns(event)` records processed event attempts when `ProcessedEventStore` is available.
+- `tickRecoveredRuns(result, options)` is an explicit helper for ticking recovered runs.
 - `previewEventRecovery` does not tick.
 - `recoverWaitingRuns` does not tick.
+- `tickRecoveredRuns` only ticks when the host calls it.
 - `previewEventRecovery` does not mutate waiting index.
 - `recoverWaitingRuns` does not mutate waiting index.
 - `previewEventRecovery` does not execute triggers.
@@ -99,7 +101,7 @@ Candidate API shape:
 recoverWaitingRuns(event, { tick: true })
 ```
 
-This option is not implemented. The current `recoverWaitingRuns(event)` API has no `tick` option and remains preview-only.
+The current `recoverWaitingRuns(event)` API has no `tick` option and remains preview-only. The implemented explicit helper is `tickRecoveredRuns(result, options)`.
 
 Possible flow:
 
@@ -175,7 +177,7 @@ interface EventRecoveryTickOptions {
 recoverWaitingRuns(event: RuntimeEvent, options?: EventRecoveryTickOptions): Promise<EventRecoveryResult>
 ```
 
-See [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the recommended `tickRecoveredRuns` helper direction. Explicit tick recovery is still not implemented.
+See [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the implemented `tickRecoveredRuns` helper. Automatic wakeup is still not implemented.
 
 Rules:
 
@@ -259,24 +261,26 @@ Strategy C needs more reliable persistence. Production recovery is better suited
 
 ## 13. Tests Needed If Implemented
 
-Future tests should cover:
+Implemented tests currently cover:
 
-- Preview result can be manually ticked by host.
-- `recoverWaitingRuns` with `tick: false` does not tick.
-- `recoverWaitingRuns` with `tick: true` requires explicit option.
+- Preview result can be manually ticked by host through `tickRecoveredRuns`.
+- `recoverWaitingRuns` remains no-tick.
 - Missing `flowRunId` is skipped.
 - Missing FlowRun is skipped.
-- Unregistered action surfaces error.
+- Unregistered flow/action surfaces structured failure.
 - Tick failure is reported per run.
+- `EventTriggerRegistry` is not executed.
+
+Future tests should cover:
+
 - Duplicate event id behavior.
-- `EventTriggerRegistry` is not executed unless explicitly requested.
-- Waiting index is updated after explicit tick.
+- Future trigger-path event handling.
+- Additional stale waiting index behavior.
 
 ## 14. Open Questions
 
-- Should `recoverWaitingRuns` default to `tick: false`?
-- Is a separate `recoverAndTick` API needed?
-- Should processed event id index be implemented first?
+- Should a future `recoverAndTick` API be added, or is `tickRecoveredRuns` enough?
+- Should duplicate event skip policy be implemented next?
 - Is a recovery attempt record needed?
 - Should `maxRuns` have a default limit?
 - Where should `flowVersion` come from?

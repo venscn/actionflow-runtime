@@ -44,10 +44,10 @@ The host needs an explicit way to choose whether to tick, which FlowRun to tick,
 
 ## 5. Candidate API Shape
 
-Candidate types, not implemented:
+Implemented helper types:
 
 ```ts
-interface EventRecoveryTickOptions {
+interface TickRecoveredRunsOptions {
   tick?: boolean;
   flowId?: string;
   flowVersion?: string;
@@ -67,12 +67,10 @@ interface EventRecoveryTickResult extends EventRecoveryResult {
   runResults: readonly EventRecoveryRunResult[];
 }
 
-recoverWaitingRuns(event: RuntimeEvent, options?: EventRecoveryTickOptions): Promise<EventRecoveryTickResult>
+tickRecoveredRuns(result: EventRecoveryResult, options?: TickRecoveredRunsOptions): Promise<EventRecoveryTickResult>
 ```
 
-If ticking is added directly to `recoverWaitingRuns`, the API may need to become async. That would be a breaking change for the current synchronous match/preview API.
-
-Another option is to add `recoverWaitingRunsWithTick(event, options)` or `tickRecoveredRuns(result, options)` so current `recoverWaitingRuns(event): EventRecoveryResult` remains stable.
+The implemented first version uses `tickRecoveredRuns(result, options)` so current `recoverWaitingRuns(event): EventRecoveryResult` remains stable and no-tick.
 
 ## 6. API Strategy Options
 
@@ -128,7 +126,7 @@ Keep:
 recoverWaitingRuns(event): EventRecoveryResult
 ```
 
-Add one explicit helper, not implemented yet:
+Implemented explicit helper:
 
 ```ts
 tickRecoveredRuns(result: EventRecoveryResult, options?: TickRecoveredRunsOptions): Promise<EventRecoveryTickResult>
@@ -143,11 +141,11 @@ recoverWaitingRunsWithTick(
 ): Promise<EventRecoveryTickResult>
 ```
 
-This project should prefer safety first, so `tickRecoveredRuns` is the recommended first implementation.
+This project chose the safer first path: `tickRecoveredRuns` is implemented as an explicit host-called helper.
 
 ## 8. tickRecoveredRuns Policy
 
-Candidate rules:
+Implemented first-version rules:
 
 1. Input must come from `previewEventRecovery` or `recoverWaitingRuns`.
 2. No automatic tick; the host must explicitly call the helper.
@@ -159,8 +157,9 @@ Candidate rules:
 8. `dryRun: true` returns `previewed` results without calling `tick`.
 9. Each run produces an `EventRecoveryRunResult`.
 10. Tick errors produce structured failed run results.
+11. `continueOnError` is supported and defaults to `true`.
 
-The first implementation must choose whether to stop on first error or continue. A `continueOnError` option may be needed, but can be deferred.
+`recoverWaitingRuns` remains no-tick. `tickRecoveredRuns` does not execute EventTriggerRegistry and does not write processed event records. Duplicate skip and exactly-once behavior remain unimplemented.
 
 ## 9. Safety Rules
 
@@ -185,7 +184,7 @@ The explicit tick helper needs a separate policy. Options:
 - B. Update `recoveredFlowRunIds` or status after ticking.
 - C. Write a separate future `RecoveryAttemptRecord`.
 
-Recommended first implementation: do not modify processed event records from the tick helper. Keeping preview recovery and execution recovery separate avoids overloading `ProcessedEventRecord`.
+Current implementation: `tickRecoveredRuns` does not modify processed event records. Keeping preview recovery and execution recovery separate avoids overloading `ProcessedEventRecord`.
 
 Duplicate skip and exactly-once behavior remain future designs.
 
@@ -227,26 +226,36 @@ Future event handling may have two independent paths:
 
 Those paths must be configurable and should not be coupled by default. This design does not implement start-flow trigger execution.
 
-## 14. Tests Needed If Implemented
+## 14. Tests
+
+Implemented tests currently cover:
 
 - `tickRecoveredRuns` dry run does not tick.
 - `tickRecoveredRuns` ticks one recovered run when explicitly called.
-- `maxRuns` limits ticked runs.
-- Missing `flowId` returns failed or skipped run result.
+- Recovered run `flowId` is used by default.
+- Explicit `flowId` override is supported.
+- `tickOptions` are passed through.
+- `maxRuns` defaults to `1`.
+- `maxRuns: 0` skips all recovered runs.
+- Invalid `maxRuns` throws.
+- Missing `flowId` returns a failed run result.
 - Unregistered flow/action surfaces structured failure.
-- Tick failure returns failed run result.
-- Waiting index updates through normal tick after successful tick.
+- `continueOnError: true` continues after failed run.
+- `continueOnError: false` skips remaining runs after failure.
 - EventTriggerRegistry is not executed.
-- Processed event records are not modified by tick helper if that policy is chosen.
+- Processed event records are not modified by tick helper.
 - `recoverWaitingRuns` remains no-tick.
+
+Future tests should cover:
+
+- More complex waiting index transitions after successful tick.
+- Duplicate event skip policy once designed.
+- Future trigger-path event handling once designed.
 
 ## 15. Open Questions
 
-- Should the API be `tickRecoveredRuns` or `recoverWaitingRunsWithTick`?
+- Should a future convenience API `recoverWaitingRunsWithTick` be added?
 - Should `recoverWaitingRuns` ever become async?
-- Should `maxRuns` default to `1`?
-- Should tick failure stop later runs?
-- Is `continueOnError` needed?
 - Should tick helper write processed event records?
 - Is a separate `RecoveryAttemptRecord` needed?
 - Should duplicate skip policy come first?

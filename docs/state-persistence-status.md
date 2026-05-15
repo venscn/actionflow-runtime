@@ -30,6 +30,7 @@ Current implemented pieces:
 - Event Recovery restore preview API.
 - Event Recovery resume policy design.
 - Explicit Tick Recovery design.
+- Explicit tick recovery helper.
 - Processed Event ID design.
 - Processed Event ID store types.
 - MemoryStateStore processed event id.
@@ -46,7 +47,6 @@ Current implemented pieces:
 The following are not implemented:
 
 - Durable recovery guarantee.
-- Explicit tick recovery implementation.
 - Waiting action wakeup.
 - Duplicate event skip / exactly-once behavior.
 - Event trigger execution.
@@ -107,9 +107,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Explicit tick recovery helper implementation.
-- Phase B: Duplicate event skip policy.
-- Phase C: Stale waiting index health checks.
+- Phase A: Duplicate event skip policy.
+- Phase B: Stale waiting index health checks.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -117,7 +116,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Explicit tick recovery helper implementation.
 - Duplicate event skip policy.
+- Stale waiting index health checks.
 
-Recommendation: start with explicit tick recovery helper implementation. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and `recoverWaitingRuns` now provides match/preview-only results with observe-only processed event records, but explicit tick recovery implementation, automatic wakeup, duplicate event skip / exactly-once behavior, and durable recovery are still not implemented.
+Recommendation: start with duplicate event skip policy. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and `tickRecoveredRuns` now provides an explicit host-called tick helper, but automatic wakeup, duplicate event skip / exactly-once behavior, and durable recovery are still not implemented.

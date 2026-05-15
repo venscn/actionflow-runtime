@@ -201,6 +201,10 @@ A sequence node has ordered `steps`.
 - `recoverWaitingRuns(event)` records processed event `started`, `completed`, and `failed` attempts when `ProcessedEventStore` is supported.
 - `recoverWaitingRuns(event)` does not skip duplicate events.
 - `recoverWaitingRuns(event)` does not tick, wake waiting actions, execute triggers, or provide exactly-once behavior.
+- `tickRecoveredRuns(result, options)` can explicitly tick recovered runs from a preview/recovery result.
+- `tickRecoveredRuns` defaults to `maxRuns: 1`.
+- `tickRecoveredRuns` supports `dryRun` and `continueOnError`.
+- `tickRecoveredRuns` does not execute triggers or write processed event records.
 - `getProcessedEvent`, `saveProcessedEvent`, `listProcessedEvents`, and `deleteProcessedEvent` proxy to `ProcessedEventStore` when supported.
 - `saveProcessedEvent` throws if the configured store does not support `ProcessedEventStore`.
 - `matchWaitingRuns` and `previewEventRecovery` do not automatically write processed event records.
@@ -318,7 +322,7 @@ The following are not implemented:
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
-- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, read-only `matchWaitingRuns`, read-only `previewEventRecovery`, and match/preview-only `recoverWaitingRuns`, but explicit tick recovery, automatic wakeup, durable recovery, and event trigger execution are not implemented.
+- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, read-only `matchWaitingRuns`, read-only `previewEventRecovery`, match/preview-only `recoverWaitingRuns`, and explicit `tickRecoveredRuns`, but automatic wakeup, durable recovery, duplicate event skip / exactly-once behavior, and event trigger execution are not implemented.
 - ProcessedEventStore is implemented by MemoryStateStore and FileStateStore and exposed through explicit ActionFlowRuntime accessors. `recoverWaitingRuns` uses observe-only processed event policy wiring, but duplicate event skip, automatic wakeup, exactly-once behavior, and durable event recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.

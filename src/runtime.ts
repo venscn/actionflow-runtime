@@ -40,6 +40,26 @@ export interface EventRecoveryResult {
   skipped: readonly EventRecoverySkip[];
 }
 
+export interface TickRecoveredRunsOptions {
+  flowId?: string;
+  flowVersion?: string;
+  tickOptions?: FlowTickOptions;
+  maxRuns?: number;
+  dryRun?: boolean;
+  continueOnError?: boolean;
+}
+
+export interface EventRecoveryRunResult {
+  flowRunId: string;
+  status: "previewed" | "ticked" | "skipped" | "failed";
+  run?: FlowEngineRunRecord;
+  reason?: string;
+}
+
+export interface EventRecoveryTickResult extends EventRecoveryResult {
+  runResults: readonly EventRecoveryRunResult[];
+}
+
 export interface ActionFlowRuntimeDependencies {
   actionRegistry?: ActionRegistry;
   flowRegistry?: FlowRegistry;
@@ -230,6 +250,102 @@ export class ActionFlowRuntime {
 
       throw error;
     }
+  }
+
+  async tickRecoveredRuns(
+    result: EventRecoveryResult,
+    options: TickRecoveredRunsOptions = {}
+  ): Promise<EventRecoveryTickResult> {
+    if (!isRecord(result)) {
+      throw new Error("EventRecoveryResult must be an object");
+    }
+
+    const maxRuns = options.maxRuns ?? 1;
+
+    if (!Number.isInteger(maxRuns) || maxRuns < 0) {
+      throw new Error("maxRuns must be a non-negative integer");
+    }
+
+    const recovered = Array.isArray(result.recovered) ? result.recovered : [];
+    const runResults: EventRecoveryRunResult[] = [];
+    const dryRun = options.dryRun ?? false;
+    const continueOnError = options.continueOnError ?? true;
+    let processedRuns = 0;
+    let stoppedAfterFailure = false;
+
+    for (const recoveredRun of recovered) {
+      if (stoppedAfterFailure) {
+        runResults.push({
+          flowRunId: recoveredRun.id,
+          status: "skipped",
+          reason: "stopped after failure"
+        });
+        continue;
+      }
+
+      if (processedRuns >= maxRuns) {
+        runResults.push({
+          flowRunId: recoveredRun.id,
+          status: "skipped",
+          reason: "maxRuns limit reached"
+        });
+        continue;
+      }
+
+      processedRuns += 1;
+
+      if (dryRun) {
+        runResults.push({
+          flowRunId: recoveredRun.id,
+          status: "previewed",
+          run: recoveredRun
+        });
+        continue;
+      }
+
+      const flowId = options.flowId ?? recoveredRun.flowId;
+
+      if (typeof flowId !== "string" || flowId.length === 0) {
+        runResults.push({
+          flowRunId: recoveredRun.id,
+          status: "failed",
+          reason: "Missing flowId"
+        });
+
+        if (!continueOnError) {
+          stoppedAfterFailure = true;
+        }
+
+        continue;
+      }
+
+      try {
+        const tickedRun = await this.tick(recoveredRun, flowId, options.tickOptions, options.flowVersion);
+        runResults.push({
+          flowRunId: recoveredRun.id,
+          status: "ticked",
+          run: tickedRun
+        });
+      } catch (error) {
+        runResults.push({
+          flowRunId: recoveredRun.id,
+          status: "failed",
+          reason: describeError(error)
+        });
+
+        if (!continueOnError) {
+          stoppedAfterFailure = true;
+        }
+      }
+    }
+
+    return {
+      eventId: result.eventId,
+      matched: result.matched,
+      recovered: result.recovered,
+      skipped: result.skipped,
+      runResults
+    };
   }
 
   createRun(flowId: string, runId: string, version?: string): FlowEngineRunRecord {

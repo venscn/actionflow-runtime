@@ -15,6 +15,7 @@ import {
 import type {
   ActionDefinition,
   ActionRunRecord,
+  EventRecoveryResult,
   FlowDefinition,
   FlowEngineRunRecord,
   ProcessedEventRecord,
@@ -867,6 +868,238 @@ describe("ActionFlowRuntime", () => {
     );
   });
 
+  it("tickRecoveredRuns dryRun returns previewed and does not tick", async () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+    const recoveredRun = createRecoveredRun("flow-run-1", "flow.basic");
+    store.saveFlowRun(recoveredRun);
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    const flowRunCount = store.listFlowRuns().length;
+    const actionRunCount = store.listActionRuns().length;
+    const waitingIndex = store.listWaitingActionRuns();
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]), { dryRun: true });
+
+    expect(result.runResults).toEqual([
+      {
+        flowRunId: "flow-run-1",
+        status: "previewed",
+        run: recoveredRun
+      }
+    ]);
+    expect(store.listFlowRuns()).toHaveLength(flowRunCount);
+    expect(store.listActionRuns()).toHaveLength(actionRunCount);
+    expect(store.listWaitingActionRuns()).toEqual(waitingIndex);
+  });
+
+  it("tickRecoveredRuns ticks one recovered run when explicitly called", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    const recoveredRun = runtime.createRun("flow.basic", "flow-run-1");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]));
+
+    expect(result.runResults[0]).toEqual(
+      expect.objectContaining({
+        flowRunId: "flow-run-1",
+        status: "ticked",
+        run: expect.objectContaining({
+          id: "flow-run-1",
+          status: "done"
+        })
+      })
+    );
+    expect(runtime.store.getFlowRun("flow-run-1")).toEqual(expect.objectContaining({ status: "done" }));
+    expect(runtime.store.getActionRun("flow-run-1:node-1")).toEqual(expect.objectContaining({ output: "ok" }));
+  });
+
+  it("tickRecoveredRuns uses recoveredRun.flowId by default", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    const recoveredRun = runtime.createRun("flow.basic", "flow-run-1");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]));
+
+    expect(result.runResults[0]?.status).toBe("ticked");
+  });
+
+  it("tickRecoveredRuns supports explicit flowId override", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    const recoveredRun = runtime.createRun("flow.basic", "flow-run-1");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]), {
+      flowId: "flow.basic"
+    });
+
+    expect(result.runResults[0]?.status).toBe("ticked");
+  });
+
+  it("tickRecoveredRuns passes tickOptions", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createCounterAction(2));
+    runtime.registerFlow(createFlowWithNumberInput("flow.counter", "counter", 0));
+    const recoveredRun = runtime.createRun("flow.counter", "flow-run-1");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]), {
+      tickOptions: { frameBudgetMs: 2, maxSliceMs: 1 }
+    });
+
+    expect(result.runResults[0]?.status).toBe("ticked");
+  });
+
+  it("tickRecoveredRuns enforces maxRuns default 1", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    const firstRun = runtime.createRun("flow.basic", "flow-run-1");
+    const secondRun = runtime.createRun("flow.basic", "flow-run-2");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([firstRun, secondRun]));
+
+    expect(result.runResults.map((runResult) => runResult.status)).toEqual(["ticked", "skipped"]);
+    expect(result.runResults[1]?.reason).toBe("maxRuns limit reached");
+  });
+
+  it("tickRecoveredRuns supports maxRuns 0", async () => {
+    const runtime = new ActionFlowRuntime();
+    const recoveredRun = createRecoveredRun("flow-run-1", "flow.basic");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]), { maxRuns: 0 });
+
+    expect(result.runResults).toEqual([
+      {
+        flowRunId: "flow-run-1",
+        status: "skipped",
+        reason: "maxRuns limit reached"
+      }
+    ]);
+  });
+
+  it("tickRecoveredRuns validates maxRuns", async () => {
+    const runtime = new ActionFlowRuntime();
+    const recoveredRun = createRecoveredRun("flow-run-1", "flow.basic");
+
+    await expect(runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]), { maxRuns: -1 })).rejects.toThrow(
+      "maxRuns must be a non-negative integer"
+    );
+    await expect(runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]), { maxRuns: 1.5 })).rejects.toThrow(
+      "maxRuns must be a non-negative integer"
+    );
+  });
+
+  it("tickRecoveredRuns returns failed when flowId is missing", async () => {
+    const runtime = new ActionFlowRuntime();
+    const recoveredRun = createRecoveredRun("flow-run-1", "");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]));
+
+    expect(result.runResults).toEqual([
+      {
+        flowRunId: "flow-run-1",
+        status: "failed",
+        reason: "Missing flowId"
+      }
+    ]);
+  });
+
+  it("tickRecoveredRuns returns failed when flow or action is unregistered", async () => {
+    const runtime = new ActionFlowRuntime();
+    const recoveredRun = createRecoveredRun("flow-run-1", "missing.flow");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]));
+
+    expect(result.runResults[0]).toEqual(
+      expect.objectContaining({
+        flowRunId: "flow-run-1",
+        status: "failed",
+        reason: "Flow not found: missing.flow"
+      })
+    );
+  });
+
+  it("tickRecoveredRuns continueOnError true continues after a failed run", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    const failedRun = createRecoveredRun("flow-run-1", "");
+    const tickedRun = runtime.createRun("flow.basic", "flow-run-2");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([failedRun, tickedRun]), { maxRuns: 2 });
+
+    expect(result.runResults.map((runResult) => runResult.status)).toEqual(["failed", "ticked"]);
+  });
+
+  it("tickRecoveredRuns continueOnError false skips remaining after failure", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    const failedRun = createRecoveredRun("flow-run-1", "");
+    const skippedRun = runtime.createRun("flow.basic", "flow-run-2");
+
+    const result = await runtime.tickRecoveredRuns(createRecoveryResult([failedRun, skippedRun]), {
+      maxRuns: 2,
+      continueOnError: false
+    });
+
+    expect(result.runResults).toEqual([
+      {
+        flowRunId: "flow-run-1",
+        status: "failed",
+        reason: "Missing flowId"
+      },
+      {
+        flowRunId: "flow-run-2",
+        status: "skipped",
+        reason: "stopped after failure"
+      }
+    ]);
+  });
+
+  it("tickRecoveredRuns does not execute EventTriggerRegistry", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger.user-created",
+      event: "user.created",
+      flow: "flow.user-created"
+    });
+    const recoveredRun = runtime.createRun("flow.basic", "flow-run-1");
+    const flowRunCount = runtime.store.listFlowRuns().length;
+
+    await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]));
+
+    expect(runtime.triggers.has("trigger.user-created")).toBe(true);
+    expect(runtime.store.listFlowRuns()).toHaveLength(flowRunCount);
+  });
+
+  it("tickRecoveredRuns does not write processed event records", async () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    const recoveredRun = runtime.createRun("flow.basic", "flow-run-1");
+
+    await runtime.tickRecoveredRuns(createRecoveryResult([recoveredRun]));
+
+    expect(runtime.listProcessedEvents()).toEqual([]);
+  });
+
+  it("recoverWaitingRuns remains no-tick", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+    store.saveFlowRun(createRecoveredRun("flow-run-1", "flow.basic"));
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+
+    runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(store.listActionRuns()).toEqual([]);
+    expect(store.getFlowRun("flow-run-1")).toEqual(expect.objectContaining({ status: "waiting" }));
+  });
+
   it("saves and reads processed events through default MemoryStateStore", () => {
     const runtime = new ActionFlowRuntime();
     const record = createProcessedEventRecord("started", "event-1");
@@ -1426,6 +1659,27 @@ function createWaitingStoredActionRun(runId: string, waitReason: string): Action
     status: "waiting",
     state: { cursor: 1 },
     waitReason
+  };
+}
+
+function createRecoveredRun(id: string, flowId: string): FlowEngineRunRecord {
+  return {
+    id,
+    flowId,
+    status: "waiting",
+    nodeRuns: {},
+    actionRuns: {},
+    sequenceCursors: {},
+    parallelCursors: {}
+  };
+}
+
+function createRecoveryResult(recovered: readonly FlowEngineRunRecord[]): EventRecoveryResult {
+  return {
+    eventId: "event-1",
+    matched: [],
+    recovered,
+    skipped: []
   };
 }
 
