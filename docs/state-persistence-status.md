@@ -21,6 +21,7 @@ Current implemented pieces:
 - `listCommittedBatches` committed marker inspection.
 - Failed marker writing.
 - `listFailedBatches` failed marker inspection.
+- FileStateStore `checkHealth` diagnostic summary.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -75,6 +76,7 @@ Known risks:
 - Pending manifests help diagnose batch writes but do not prevent partial writes.
 - Committed markers improve inspection but do not make writes atomic.
 - Failed markers improve inspection but do not repair partial writes.
+- Health check reports marker state but does not validate full data consistency or repair partial writes.
 - `listPendingBatches` can report invalid manifests but does not repair them.
 - Corrupted JSON fails reads and lists.
 - There is no migration story yet.
@@ -87,10 +89,9 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: store health check API.
-- Phase B: rollback design evaluation.
-- Phase C: waiting index design.
-- Phase D: event recovery design.
+- Phase A: rollback design evaluation.
+- Phase B: waiting index design.
+- Phase C: event recovery design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -98,7 +99,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- FileStateStore store health check API.
 - FileStateStore rollback design evaluation.
+- Waiting index design.
 
-Recommendation: start with FileStateStore store health check API. Pending, committed, and failed markers can now describe batch attempts, but there is still no inspection layer that summarizes incomplete, committed, and failed batches for callers.
+Recommendation: start with FileStateStore rollback design evaluation before adding more storage backends. Batch marker inspection can now summarize marker state, but it still cannot repair or reverse partial writes.

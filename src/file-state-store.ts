@@ -39,6 +39,20 @@ export interface FileStateStoreFailedBatch {
   manifest: FileStoreBatchManifest;
 }
 
+export type FileStateStoreBatchHealthStatus = "clean" | "has-pending" | "has-failed" | "has-pending-and-failed";
+
+export interface FileStateStoreHealth {
+  status: FileStateStoreBatchHealthStatus;
+  pendingBatches: readonly FileStateStorePendingBatch[];
+  committedBatches: readonly FileStateStoreCommittedBatch[];
+  failedBatches: readonly FileStateStoreFailedBatch[];
+  summary: {
+    pending: number;
+    committed: number;
+    failed: number;
+  };
+}
+
 export class FileStateStore implements BatchStateStore {
   private readonly rootDir: string;
   private readonly actionRunsDir: string;
@@ -123,6 +137,26 @@ export class FileStateStore implements BatchStateStore {
 
   listFailedBatches(): readonly FileStateStoreFailedBatch[] {
     return this.listBatchManifests(this.failedBatchesDir, "failed");
+  }
+
+  checkHealth(): FileStateStoreHealth {
+    const pendingBatches = this.listPendingBatches();
+    const committedBatches = this.listCommittedBatches();
+    const failedBatches = this.listFailedBatches();
+    const pending = pendingBatches.length;
+    const failed = failedBatches.length;
+
+    return {
+      status: batchHealthStatus(pending, failed),
+      pendingBatches,
+      committedBatches,
+      failedBatches,
+      summary: {
+        pending,
+        committed: committedBatches.length,
+        failed
+      }
+    };
   }
 
   deleteActionRun(runId: string): boolean {
@@ -352,4 +386,20 @@ export class FileStateStore implements BatchStateStore {
 
 function actionRunKey(run: ActionRunRecord): string {
   return run.runId ?? run.id;
+}
+
+function batchHealthStatus(pending: number, failed: number): FileStateStoreBatchHealthStatus {
+  if (pending > 0 && failed > 0) {
+    return "has-pending-and-failed";
+  }
+
+  if (pending > 0) {
+    return "has-pending";
+  }
+
+  if (failed > 0) {
+    return "has-failed";
+  }
+
+  return "clean";
 }

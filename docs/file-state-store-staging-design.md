@@ -120,12 +120,9 @@ Failure handling should:
 
 Current runtime should not automatically scan `batches/`.
 
-Future APIs could include:
-
-- `inspectBatches()`
-- `checkStoreHealth()`
-
 FileStateStore currently exposes `listPendingBatches()`, `listCommittedBatches()`, and `listFailedBatches()` for manual inspection. They read and parse batch manifests without mutating them. They do not automatically recover, roll back writes, or change runtime execution. Invalid or corrupted manifests are reported as errors.
+
+FileStateStore also exposes `checkHealth()` to summarize pending, committed, and failed batch markers. It is read-only and does not repair, recover, roll back writes, delete markers, or move pending batches to failed.
 
 If a pending batch is found, the runtime should not automatically recover it. Tooling can report incomplete batches and let the host or user decide what to do.
 
@@ -159,7 +156,7 @@ Phase 4:
 
 - Make FileStateStore validate staging records before target writes.
 
-Status: partially implemented. FileStateStore writes FlowRun and ActionRun envelopes into pending staging record directories and parses them before best-effort target writes. It still does not move records through a complete staging commit protocol, write committed markers, write failed markers, perform rollback, or change `restoreRun` behavior.
+Status: partially implemented. FileStateStore writes FlowRun and ActionRun envelopes into pending staging record directories and parses them before best-effort target writes. It still does not move records through an atomic staging commit protocol, perform rollback, or change `restoreRun` behavior.
 
 Phase 5:
 
@@ -177,7 +174,7 @@ Phase 7:
 
 - Add store health inspection helper.
 
-Status: partially implemented for batch manifest inspection only. `FileStateStore.listPendingBatches()`, `listCommittedBatches()`, and `listFailedBatches()` can list and parse batch manifests, but broader store health checks are not implemented.
+Status: partially implemented. FileStateStore exposes `checkHealth()` to summarize pending, committed, and failed batch marker counts and return a coarse status. It does not validate full data consistency, repair partial writes, roll back, recover, or delete markers.
 
 ## 11. Tests Needed
 
@@ -185,7 +182,6 @@ Future tests should cover:
 
 - Target write failure surfaces an error.
 - `restoreRun` after committed batch works.
-- Pending batch is detectable.
 - `clear` does not accidentally delete outside store root.
 - Windows unsafe ids remain safe through staging.
 

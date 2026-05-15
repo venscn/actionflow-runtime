@@ -762,6 +762,153 @@ describe("FileStateStore", () => {
     }
   });
 
+  it("checkHealth returns clean for empty store", () => {
+    const store = createStore();
+
+    expect(store.checkHealth()).toEqual({
+      status: "clean",
+      pendingBatches: [],
+      committedBatches: [],
+      failedBatches: [],
+      summary: {
+        pending: 0,
+        committed: 0,
+        failed: 0
+      }
+    });
+  });
+
+  it("checkHealth reports successful batches as pending plus committed", () => {
+    const store = createStore();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    const health = store.checkHealth();
+
+    expect(health.status).toBe("has-pending");
+    expect(health.summary).toEqual({
+      pending: 1,
+      committed: 1,
+      failed: 0
+    });
+    expect(health.pendingBatches).toHaveLength(1);
+    expect(health.committedBatches).toHaveLength(1);
+    expect(health.failedBatches).toEqual([]);
+  });
+
+  it("checkHealth returns has-pending when pending exists and failed is empty", () => {
+    const store = createStore();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    expect(store.checkHealth().status).toBe("has-pending");
+  });
+
+  it("checkHealth returns has-failed when failed exists and pending is empty", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeFailedBatchFile(
+      rootDir,
+      "failed.json",
+      JSON.stringify({
+        schemaVersion: 1,
+        kind: "runBatch",
+        batchId: "batch-1",
+        createdAt: new Date().toISOString(),
+        status: "failed",
+        actionRunIds: [],
+        targetFiles: []
+      })
+    );
+
+    const health = store.checkHealth();
+
+    expect(health.status).toBe("has-failed");
+    expect(health.summary).toEqual({
+      pending: 0,
+      committed: 0,
+      failed: 1
+    });
+  });
+
+  it("checkHealth returns has-pending-and-failed when both exist", () => {
+    const store = createStore();
+
+    expect(() =>
+      store.saveRunBatch({
+        flowRun: createFlowRun("flow-run-1", "running"),
+        actionRuns: [{ ...createActionRun("flow-run-1:node-1", "ready"), state: undefined }]
+      })
+    ).toThrow("$.state");
+
+    const health = store.checkHealth();
+
+    expect(health.status).toBe("has-pending-and-failed");
+    expect(health.summary).toEqual({
+      pending: 1,
+      committed: 0,
+      failed: 1
+    });
+  });
+
+  it("checkHealth includes committed count", () => {
+    const store = createStore();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    expect(store.checkHealth().summary.committed).toBe(1);
+  });
+
+  it("checkHealth propagates invalid pending manifest errors", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writePendingBatchFile(rootDir, "bad.json", "{");
+
+    expect(() => store.checkHealth()).toThrow();
+  });
+
+  it("checkHealth propagates invalid committed manifest errors", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeCommittedBatchFile(rootDir, "bad.json", "{");
+
+    expect(() => store.checkHealth()).toThrow();
+  });
+
+  it("checkHealth propagates invalid failed manifest errors", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeFailedBatchFile(rootDir, "bad.json", "{");
+
+    expect(() => store.checkHealth()).toThrow();
+  });
+
+  it("checkHealth does not mutate marker files", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+    expect(() =>
+      store.saveRunBatch({
+        flowRun: createFlowRun("flow-run-2", "running"),
+        actionRuns: [{ ...createActionRun("flow-run-2:node-1", "ready"), state: undefined }]
+      })
+    ).toThrow("$.state");
+
+    const before = markerFileCounts(rootDir);
+
+    store.checkHealth();
+
+    expect(markerFileCounts(rootDir)).toEqual(before);
+  });
+
   it("listPendingBatches returns an empty list when no pending directory exists", () => {
     const store = createStore();
 
@@ -963,6 +1110,14 @@ function listFailedBatchManifestFiles(rootDir: string): string[] {
   return readdirSync(dir)
     .filter((fileName) => fileName.endsWith(".json"))
     .map((fileName) => path.join(dir, fileName));
+}
+
+function markerFileCounts(rootDir: string): { pending: number; committed: number; failed: number } {
+  return {
+    pending: listPendingBatchManifestFiles(rootDir).length,
+    committed: listCommittedBatchManifestFiles(rootDir).length,
+    failed: listFailedBatchManifestFiles(rootDir).length
+  };
 }
 
 function pendingBatchRecordsDir(rootDir: string, manifest: FileStoreBatchManifest): string {

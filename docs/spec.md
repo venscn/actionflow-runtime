@@ -253,9 +253,12 @@ A parallel node has `branches`.
 - `listPendingBatches()` can list and parse pending batch manifests.
 - `listCommittedBatches()` can list and parse committed markers.
 - `listFailedBatches()` can list and parse failed markers.
+- `checkHealth()` summarizes pending, committed, and failed batch marker counts.
 - Pending manifests are diagnostic only.
 - Committed markers are diagnostic only and do not make batch writes atomic.
 - Failed markers are best-effort diagnostics only and do not roll back or recover partial writes.
+- `checkHealth()` is diagnostic only and does not repair, recover, roll back, delete markers, or validate full data consistency.
+- A `clean` health status does not mean durable recovery is guaranteed.
 - `listPendingBatches()` does not mutate pending batches.
 - Invalid or corrupted pending manifests are reported as errors.
 - It can persist yielded sliceable ActionRun records as long as action state is JSON-compatible.
@@ -275,7 +278,7 @@ The following are not implemented:
 
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
-- FileStateStore pending manifests, staging record writes, committed markers, and failed markers exist, but rollback and atomic batch recovery are not implemented.
+- FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.
