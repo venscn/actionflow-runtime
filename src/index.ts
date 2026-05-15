@@ -11,3 +11,4 @@ export * from "./event-trigger.js";
 export * from "./runtime.js";
 export * from "./file-state-store-utils.js";
 export * from "./file-state-store.js";
+export * from "./file-state-store-batch.js";

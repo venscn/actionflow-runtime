@@ -145,6 +145,8 @@ Phase 2:
 
 - Add `batchId` helper and manifest types.
 
+Status: implemented as helper/types only. FileStateStore does not write pending manifests yet.
+
 Phase 3:
 
 - Make FileStateStore write batch manifests in `batches/pending/`.
