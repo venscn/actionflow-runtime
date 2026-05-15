@@ -74,7 +74,7 @@ interface ProcessedEventRecord {
 
 ## 6. Proposed Store Extension
 
-Candidate optional interface:
+Current optional interface:
 
 ```ts
 interface ProcessedEventStore extends StateStore {
@@ -85,9 +85,13 @@ interface ProcessedEventStore extends StateStore {
 }
 ```
 
-This should be optional and should not enter the base `StateStore` interface. Runtime can detect support. Stores that do not support it keep current behavior.
+`ProcessedEventRecord`, `ProcessedEventStore`, and `supportsProcessedEvents(store)` are implemented as type-level groundwork.
 
-MemoryStateStore can use a `Map`. FileStateStore can write `processed-events/{safeEventId}.json`.
+This extension is optional and does not enter the base `StateStore` interface. Runtime can detect support. Stores that do not support it keep current behavior.
+
+MemoryStateStore processed event storage is not implemented. FileStateStore processed event storage is not implemented. Runtime integration is not implemented. `recoverWaitingRuns` is not implemented. Exactly-once behavior is not implemented.
+
+Future MemoryStateStore support can use a `Map`. Future FileStateStore support can write `processed-events/{safeEventId}.json`.
 
 ## 7. Status Semantics
 

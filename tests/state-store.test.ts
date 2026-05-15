@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { MemoryStateStore, supportsRunBatch, supportsWaitingIndex } from "../src/index.js";
-import type { ActionRunRecord, FlowRunRecord, StateStore } from "../src/index.js";
+import { MemoryStateStore, supportsProcessedEvents, supportsRunBatch, supportsWaitingIndex } from "../src/index.js";
+import type { ActionRunRecord, FlowRunRecord, ProcessedEventRecord, StateStore } from "../src/index.js";
 
 describe("MemoryStateStore", () => {
   it("saves and reads an ActionRun", () => {
@@ -153,6 +153,39 @@ describe("MemoryStateStore", () => {
 
   it("supportsWaitingIndex returns false for a minimal StateStore", () => {
     expect(supportsWaitingIndex(new MinimalStateStore())).toBe(false);
+  });
+
+  it("supportsProcessedEvents returns false for MemoryStateStore", () => {
+    expect(supportsProcessedEvents(new MemoryStateStore())).toBe(false);
+  });
+
+  it("supportsProcessedEvents returns false for a minimal StateStore", () => {
+    expect(supportsProcessedEvents(new MinimalStateStore())).toBe(false);
+  });
+
+  it("supportsProcessedEvents returns true for a store with all processed event methods", () => {
+    expect(supportsProcessedEvents(new ProcessedEventCapableStateStore())).toBe(true);
+  });
+
+  it("supportsProcessedEvents returns false when one method is missing", () => {
+    expect(supportsProcessedEvents(new MissingDeleteProcessedEventStore())).toBe(false);
+  });
+
+  it("ProcessedEventRecord type accepts started, completed, and failed statuses", () => {
+    const started: ProcessedEventRecord = createProcessedEventRecord("started");
+    const completed: ProcessedEventRecord = createProcessedEventRecord("completed");
+    const failed: ProcessedEventRecord = createProcessedEventRecord("failed");
+
+    expect([started.status, completed.status, failed.status]).toEqual(["started", "completed", "failed"]);
+  });
+
+  it("ProcessedEventRecord supports optional error", () => {
+    const record: ProcessedEventRecord = {
+      ...createProcessedEventRecord("failed"),
+      error: "recovery failed"
+    };
+
+    expect(record.error).toBe("recovery failed");
   });
 
   it("indexWaitingActionRun stores a waiting run", () => {
@@ -354,6 +387,34 @@ class MinimalStateStore implements StateStore {
   clear(): void {}
 }
 
+class ProcessedEventCapableStateStore extends MinimalStateStore {
+  getProcessedEvent(): ProcessedEventRecord | undefined {
+    return undefined;
+  }
+
+  saveProcessedEvent(): void {}
+
+  listProcessedEvents(): readonly ProcessedEventRecord[] {
+    return [];
+  }
+
+  deleteProcessedEvent(): boolean {
+    return false;
+  }
+}
+
+class MissingDeleteProcessedEventStore extends MinimalStateStore {
+  getProcessedEvent(): ProcessedEventRecord | undefined {
+    return undefined;
+  }
+
+  saveProcessedEvent(): void {}
+
+  listProcessedEvents(): readonly ProcessedEventRecord[] {
+    return [];
+  }
+}
+
 function createActionRun(runId: string, status: ActionRunRecord["status"]): ActionRunRecord {
   return {
     id: runId,
@@ -373,6 +434,21 @@ function createWaitingActionRun(runId: string, waitReason: string, actionId = "w
     status: "waiting",
     state: { cursor: 1 },
     waitReason
+  };
+}
+
+function createProcessedEventRecord(status: ProcessedEventRecord["status"]): ProcessedEventRecord {
+  const now = new Date().toISOString();
+
+  return {
+    eventId: `event-${status}`,
+    eventName: "user.created",
+    status,
+    firstSeenAt: now,
+    updatedAt: now,
+    attemptCount: 1,
+    matchedRunIds: ["flow-run-1:node-1"],
+    recoveredFlowRunIds: ["flow-run-1"]
   };
 }
 

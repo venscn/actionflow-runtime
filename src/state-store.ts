@@ -44,6 +44,27 @@ export interface WaitingIndexStore extends StateStore {
   listWaitingActionRuns(filter?: WaitingRunFilter): readonly WaitingRunIndexEntry[];
 }
 
+export type ProcessedEventStatus = "started" | "completed" | "failed";
+
+export interface ProcessedEventRecord {
+  eventId: string;
+  eventName: string;
+  status: ProcessedEventStatus;
+  firstSeenAt: string;
+  updatedAt: string;
+  attemptCount: number;
+  matchedRunIds: string[];
+  recoveredFlowRunIds: string[];
+  error?: string;
+}
+
+export interface ProcessedEventStore extends StateStore {
+  getProcessedEvent(eventId: string): ProcessedEventRecord | undefined;
+  saveProcessedEvent(record: ProcessedEventRecord): void;
+  listProcessedEvents(): readonly ProcessedEventRecord[];
+  deleteProcessedEvent(eventId: string): boolean;
+}
+
 export function supportsRunBatch(store: StateStore): store is BatchStateStore {
   return typeof (store as { saveRunBatch?: unknown }).saveRunBatch === "function";
 }
@@ -59,6 +80,22 @@ export function supportsWaitingIndex(store: StateStore): store is WaitingIndexSt
     typeof candidate.indexWaitingActionRun === "function" &&
     typeof candidate.removeWaitingActionRun === "function" &&
     typeof candidate.listWaitingActionRuns === "function"
+  );
+}
+
+export function supportsProcessedEvents(store: StateStore): store is ProcessedEventStore {
+  const candidate = store as {
+    getProcessedEvent?: unknown;
+    saveProcessedEvent?: unknown;
+    listProcessedEvents?: unknown;
+    deleteProcessedEvent?: unknown;
+  };
+
+  return (
+    typeof candidate.getProcessedEvent === "function" &&
+    typeof candidate.saveProcessedEvent === "function" &&
+    typeof candidate.listProcessedEvents === "function" &&
+    typeof candidate.deleteProcessedEvent === "function"
   );
 }
 
