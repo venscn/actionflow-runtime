@@ -34,6 +34,7 @@ The following are not implemented:
 - Durable recovery guarantee.
 - Event recovery.
 - Waiting action wakeup.
+- Waiting index.
 - FlowDefinition persistence.
 - EventTriggerDefinition persistence.
 - Database stores.
@@ -91,9 +92,10 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: waiting index design.
-- Phase B: event recovery design.
-- Phase C: production store design.
+- Phase A: Waiting Index design.
+- Phase B: Waiting Index implementation.
+- Phase C: Event recovery design.
+- Phase D: Event recovery implementation.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -101,7 +103,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Waiting index design.
+- Waiting Index implementation.
 - Event recovery design.
 
-Recommendation: start with waiting index design. Health reports now expose basic marker and missing-target diagnostics, while waiting action recovery remains the next runtime-level gap.
+Recommendation: start with Waiting Index implementation. This turn only adds the design document; the index itself, event recovery, and wakeup behavior are still not implemented.
