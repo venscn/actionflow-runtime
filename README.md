@@ -185,9 +185,13 @@ Implemented:
 - FileStateStore for local ActionRun / FlowRun persistence
 - MemoryStateStore batch save
 - FileStateStore best-effort batch save
+- FileStateStore pending batch manifest diagnostics
+- FileStateStore pending batch inspection
 
 Not implemented yet:
 
+- committed / failed batch markers
+- staging record writes
 - atomic multi-file transactions
 - durable recovery after process restart
 - variable/template binding between flow nodes
