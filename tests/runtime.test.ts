@@ -12,7 +12,14 @@ import {
   FlowRegistry,
   MemoryStateStore
 } from "../src/index.js";
-import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowEngineRunRecord, StateStoreRunBatch } from "../src/index.js";
+import type {
+  ActionDefinition,
+  ActionRunRecord,
+  FlowDefinition,
+  FlowEngineRunRecord,
+  ProcessedEventRecord,
+  StateStoreRunBatch
+} from "../src/index.js";
 
 describe("ActionFlowRuntime", () => {
   const tempDirs: string[] = [];
@@ -585,6 +592,118 @@ describe("ActionFlowRuntime", () => {
     );
   });
 
+  it("saves and reads processed events through default MemoryStateStore", () => {
+    const runtime = new ActionFlowRuntime();
+    const record = createProcessedEventRecord("started", "event-1");
+
+    runtime.saveProcessedEvent(record);
+
+    expect(runtime.getProcessedEvent("event-1")).toEqual(record);
+    expect(runtime.listProcessedEvents()).toEqual([record]);
+  });
+
+  it("deletes processed events through default MemoryStateStore", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.saveProcessedEvent(createProcessedEventRecord("started", "event-1"));
+
+    expect(runtime.deleteProcessedEvent("event-1")).toBe(true);
+    expect(runtime.deleteProcessedEvent("event-1")).toBe(false);
+    expect(runtime.getProcessedEvent("event-1")).toBeUndefined();
+  });
+
+  it("uses FileStateStore processed events when injected", () => {
+    const rootDir = mkdtempSync(path.join(os.tmpdir(), "actionflow-runtime-processed-events-"));
+    tempDirs.push(rootDir);
+    const firstRuntime = new ActionFlowRuntime({
+      stateStore: new FileStateStore({ rootDir })
+    });
+    const record = createProcessedEventRecord("completed", "event-1");
+
+    firstRuntime.saveProcessedEvent(record);
+    expect(firstRuntime.getProcessedEvent("event-1")).toEqual(record);
+    expect(firstRuntime.listProcessedEvents()).toEqual([record]);
+
+    const secondRuntime = new ActionFlowRuntime({
+      stateStore: new FileStateStore({ rootDir })
+    });
+
+    expect(secondRuntime.getProcessedEvent("event-1")).toEqual(record);
+    expect(secondRuntime.deleteProcessedEvent("event-1")).toBe(true);
+    expect(secondRuntime.getProcessedEvent("event-1")).toBeUndefined();
+  });
+
+  it("processed event get/list/delete are safe when store lacks ProcessedEventStore", () => {
+    const runtime = new ActionFlowRuntime({ stateStore: new RecordingFallbackStateStore() });
+
+    expect(runtime.getProcessedEvent("event-1")).toBeUndefined();
+    expect(runtime.listProcessedEvents()).toEqual([]);
+    expect(runtime.deleteProcessedEvent("event-1")).toBe(false);
+  });
+
+  it("saveProcessedEvent throws when store lacks ProcessedEventStore", () => {
+    const runtime = new ActionFlowRuntime({ stateStore: new RecordingFallbackStateStore() });
+
+    expect(() => runtime.saveProcessedEvent(createProcessedEventRecord("started", "event-1"))).toThrow(
+      "ProcessedEventStore is not supported"
+    );
+  });
+
+  it("propagates processed event validation errors", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(() => runtime.saveProcessedEvent({ ...createProcessedEventRecord("started"), eventId: "" })).toThrow(
+      "eventId is required"
+    );
+    expect(() =>
+      runtime.saveProcessedEvent({ ...createProcessedEventRecord("started"), status: "invalid" as never })
+    ).toThrow("Invalid processed event status");
+  });
+
+  it("matchWaitingRuns does not write processed event records", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+
+    runtime.matchWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(runtime.listProcessedEvents()).toEqual([]);
+  });
+
+  it("previewEventRecovery does not write processed event records", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "waiting"
+    });
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+
+    runtime.previewEventRecovery({ id: "event-1", name: "user.created" });
+
+    expect(runtime.listProcessedEvents()).toEqual([]);
+  });
+
+  it("processed event APIs do not execute EventTriggerRegistry", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.registerTrigger({
+      id: "trigger.user-created",
+      event: "user.created",
+      flow: "flow.user-created"
+    });
+    runtime.saveProcessedEvent(createProcessedEventRecord("started", "event-1"));
+    runtime.getProcessedEvent("event-1");
+    runtime.listProcessedEvents();
+    runtime.deleteProcessedEvent("event-1");
+
+    expect(runtime.triggers.has("trigger.user-created")).toBe(true);
+    expect(runtime.store.listFlowRuns()).toEqual([]);
+  });
+
   it("throws when restoring a missing FlowRun", () => {
     const runtime = new ActionFlowRuntime();
 
@@ -1092,6 +1211,21 @@ function createCounterAction(limit: number): ActionDefinition<number, number, { 
 
       return { type: "yield", state: next };
     }
+  };
+}
+
+function createProcessedEventRecord(status: ProcessedEventRecord["status"], eventId = `event-${status}`): ProcessedEventRecord {
+  const now = new Date().toISOString();
+
+  return {
+    eventId,
+    eventName: "user.created",
+    status,
+    firstSeenAt: now,
+    updatedAt: now,
+    attemptCount: 1,
+    matchedRunIds: ["flow-run-1:node-1"],
+    recoveredFlowRunIds: ["flow-run-1"]
   };
 }
 

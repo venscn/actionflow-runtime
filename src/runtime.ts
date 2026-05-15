@@ -10,8 +10,10 @@ import {
 } from "./package-manifest.js";
 import {
   MemoryStateStore,
+  supportsProcessedEvents,
   supportsRunBatch,
   supportsWaitingIndex,
+  type ProcessedEventRecord,
   type StateStore,
   type StateStoreRunBatch,
   type WaitingRunIndexEntry
@@ -84,6 +86,38 @@ export class ActionFlowRuntime {
       actions: this.actions,
       flows: this.flows
     });
+  }
+
+  getProcessedEvent(eventId: string): ProcessedEventRecord | undefined {
+    if (!supportsProcessedEvents(this.store)) {
+      return undefined;
+    }
+
+    return this.store.getProcessedEvent(eventId);
+  }
+
+  saveProcessedEvent(record: ProcessedEventRecord): void {
+    if (!supportsProcessedEvents(this.store)) {
+      throw new Error("ProcessedEventStore is not supported");
+    }
+
+    this.store.saveProcessedEvent(record);
+  }
+
+  listProcessedEvents(): readonly ProcessedEventRecord[] {
+    if (!supportsProcessedEvents(this.store)) {
+      return [];
+    }
+
+    return this.store.listProcessedEvents();
+  }
+
+  deleteProcessedEvent(eventId: string): boolean {
+    if (!supportsProcessedEvents(this.store)) {
+      return false;
+    }
+
+    return this.store.deleteProcessedEvent(eventId);
   }
 
   matchWaitingRuns(event: RuntimeEvent): EventRecoveryResult {

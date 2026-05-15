@@ -47,6 +47,7 @@ Current implemented pieces:
 - FileStateStore waiting index.
 - `ActionFlowRuntime.matchWaitingRuns(event)` read-only matching.
 - `ActionFlowRuntime.previewEventRecovery(event)` read-only restore preview.
+- Explicit `ActionFlowRuntime` processed event record accessors when the configured store supports `ProcessedEventStore`.
 - `EventTriggerRegistry` definitions.
 - FileStateStore local persistence.
 
@@ -173,7 +174,7 @@ Candidate future strategy:
 - Do not claim exactly-once delivery in the first version.
 - Return `matched` and `skipped` records so the API does not pretend recovery succeeded.
 
-See [Processed Event ID Design](processed-event-id-design.md) for the proposed processed event id index. The design is documented, but no processed event id store or exactly-once behavior is implemented.
+See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. These accessors do not imply automatic idempotency. `matchWaitingRuns` and `previewEventRecovery` still do not write processed event records, and exactly-once behavior is not implemented.
 
 ## 11. Error Handling
 
@@ -235,7 +236,9 @@ Phase 6:
 
 Phase 7:
 
-- Design processed event id index. Documented in [Processed Event ID Design](processed-event-id-design.md), not implemented.
+- Add processed event id store types and MemoryStateStore / FileStateStore implementations. Implemented.
+- Add explicit ActionFlowRuntime processed event accessors. Implemented.
+- Wire processed event policy into recoverWaitingRuns. Not implemented.
 
 Phase 8:
 
