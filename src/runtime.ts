@@ -13,9 +13,30 @@ import {
   supportsRunBatch,
   supportsWaitingIndex,
   type StateStore,
-  type StateStoreRunBatch
+  type StateStoreRunBatch,
+  type WaitingRunIndexEntry
 } from "./state-store.js";
 import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowRunRecord } from "./types.js";
+
+export interface RuntimeEvent {
+  id: string;
+  name: string;
+  payload?: unknown;
+  occurredAt?: string;
+  source?: string;
+}
+
+export interface EventRecoverySkip {
+  runId: string;
+  reason: string;
+}
+
+export interface EventRecoveryResult {
+  eventId: string;
+  matched: readonly WaitingRunIndexEntry[];
+  recovered: readonly FlowEngineRunRecord[];
+  skipped: readonly EventRecoverySkip[];
+}
 
 export interface ActionFlowRuntimeDependencies {
   actionRegistry?: ActionRegistry;
@@ -63,6 +84,26 @@ export class ActionFlowRuntime {
       actions: this.actions,
       flows: this.flows
     });
+  }
+
+  matchWaitingRuns(event: RuntimeEvent): EventRecoveryResult {
+    validateRuntimeEvent(event);
+
+    if (!supportsWaitingIndex(this.store)) {
+      return {
+        eventId: event.id,
+        matched: [],
+        recovered: [],
+        skipped: []
+      };
+    }
+
+    return {
+      eventId: event.id,
+      matched: this.store.listWaitingActionRuns({ waitReason: event.name }),
+      recovered: [],
+      skipped: []
+    };
   }
 
   createRun(flowId: string, runId: string, version?: string): FlowEngineRunRecord {
@@ -175,4 +216,26 @@ function cloneRecord<T>(value: unknown): Record<string, T> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateRuntimeEvent(event: RuntimeEvent): void {
+  if (!isRecord(event)) {
+    throw new Error("Runtime event must be an object");
+  }
+
+  if (typeof event.id !== "string" || event.id.length === 0) {
+    throw new Error("Runtime event id is required");
+  }
+
+  if (typeof event.name !== "string" || event.name.length === 0) {
+    throw new Error("Runtime event name is required");
+  }
+
+  if ("occurredAt" in event && event.occurredAt !== undefined && typeof event.occurredAt !== "string") {
+    throw new Error("Runtime event occurredAt must be a string");
+  }
+
+  if ("source" in event && event.source !== undefined && typeof event.source !== "string") {
+    throw new Error("Runtime event source must be a string");
+  }
 }

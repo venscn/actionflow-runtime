@@ -301,6 +301,122 @@ describe("ActionFlowRuntime", () => {
     expect(store.indexCalls).toBe(0);
   });
 
+  it("matchWaitingRuns returns matching waiting entries by event name", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-2:node-1", "order.created"));
+
+    const result = runtime.matchWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(result.eventId).toBe("event-1");
+    expect(result.matched).toEqual([
+      expect.objectContaining({
+        runId: "flow-run-1:node-1",
+        waitReason: "user.created"
+      })
+    ]);
+    expect(result.recovered).toEqual([]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("matchWaitingRuns returns empty matched for a nonmatching event", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+
+    expect(runtime.matchWaitingRuns({ id: "event-1", name: "order.created" })).toEqual({
+      eventId: "event-1",
+      matched: [],
+      recovered: [],
+      skipped: []
+    });
+  });
+
+  it("matchWaitingRuns returns empty matched when the store does not support waiting index", () => {
+    const runtime = new ActionFlowRuntime({ stateStore: new RecordingFallbackStateStore() });
+
+    expect(runtime.matchWaitingRuns({ id: "event-1", name: "user.created" })).toEqual({
+      eventId: "event-1",
+      matched: [],
+      recovered: [],
+      skipped: []
+    });
+  });
+
+  it("matchWaitingRuns validates event id", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(() => runtime.matchWaitingRuns({ id: "", name: "user.created" })).toThrow(
+      "Runtime event id is required"
+    );
+    expect(() => runtime.matchWaitingRuns({ id: 1, name: "user.created" } as never)).toThrow(
+      "Runtime event id is required"
+    );
+  });
+
+  it("matchWaitingRuns validates event name", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(() => runtime.matchWaitingRuns({ id: "event-1", name: "" })).toThrow(
+      "Runtime event name is required"
+    );
+    expect(() => runtime.matchWaitingRuns({ id: "event-1", name: 1 } as never)).toThrow(
+      "Runtime event name is required"
+    );
+  });
+
+  it("matchWaitingRuns does not restore or tick", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("missing-flow-run:node-1", "user.created"));
+
+    const result = runtime.matchWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(result.matched).toHaveLength(1);
+    expect(runtime.store.listFlowRuns()).toEqual([]);
+    expect(runtime.store.listActionRuns()).toEqual([]);
+  });
+
+  it("matchWaitingRuns does not mutate waiting index", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    const before = store.listWaitingActionRuns();
+
+    runtime.matchWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(store.listWaitingActionRuns()).toEqual(before);
+  });
+
+  it("matchWaitingRuns does not execute EventTriggerRegistry", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    runtime.registerTrigger({
+      id: "trigger.user-created",
+      event: "user.created",
+      flow: "flow.user-created"
+    });
+
+    runtime.matchWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(runtime.triggers.has("trigger.user-created")).toBe(true);
+    expect(store.listFlowRuns()).toEqual([]);
+  });
+
+  it("matchWaitingRuns propagates waiting index errors", () => {
+    const error = new Error("waiting index list failed");
+    const runtime = new ActionFlowRuntime({ stateStore: new FailingWaitingListStore(error) });
+
+    expect(() => runtime.matchWaitingRuns({ id: "event-1", name: "user.created" })).toThrow(error);
+  });
+
   it("throws when restoring a missing FlowRun", () => {
     const runtime = new ActionFlowRuntime();
 
@@ -863,6 +979,16 @@ class FailingBatchWaitingIndexStore extends MemoryStateStore {
   override indexWaitingActionRun(run: ActionRunRecord): void {
     this.indexCalls += 1;
     super.indexWaitingActionRun(run);
+  }
+}
+
+class FailingWaitingListStore extends MemoryStateStore {
+  constructor(private readonly error: Error) {
+    super();
+  }
+
+  override listWaitingActionRuns(): ReturnType<MemoryStateStore["listWaitingActionRuns"]> {
+    throw this.error;
   }
 }
 

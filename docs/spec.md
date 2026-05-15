@@ -191,6 +191,9 @@ A sequence node has ordered `steps`.
 - When the configured store supports `WaitingIndexStore`, `tick` updates the waiting index after FlowRun and ActionRun persistence succeeds.
 - Waiting index updates do not wake or resume waiting actions.
 - `restoreRun(flowRunId)` reloads a saved FlowRun from `StateStore`, fills missing FlowEngine record fields, and merges stored ActionRuns whose run ids start with the FlowRun id.
+- `matchWaitingRuns(event)` queries `WaitingIndexStore` by matching `event.name` against `waitReason`.
+- `matchWaitingRuns(event)` is read-only and returns matched waiting entries only.
+- `matchWaitingRuns(event)` does not restore, tick, wake waiting actions, or execute triggers.
 - `checkPackageManifest(manifest)` first validates manifest structure, then checks referenced actions and flows against the runtime registries.
 - It does not add new execution semantics.
 - It does not install packages, load code, or execute flows during package checks.
@@ -294,7 +297,7 @@ The following are not implemented:
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
-- WaitingIndexStore exists for MemoryStateStore, FileStateStore, and Runtime tick integration, but waiting action wakeup and event recovery are not implemented.
+- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, and read-only `matchWaitingRuns`, but automatic wakeup, `recoverWaitingRuns`, durable recovery, and event trigger execution are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.

@@ -4,9 +4,9 @@
 
 ActionRun can currently enter `waiting` status. Runtime can write waiting ActionRuns into a waiting index, and both MemoryStateStore and FileStateStore can query that index.
 
-There is still no mechanism that matches an external event to waiting ActionRuns. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
+The runtime now has a read-only `matchWaitingRuns(event)` API that can match an external event name to waiting index entries. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
 
-`ActionFlowRuntime.restoreRun` can reload run records, but it does not automatically continue execution. As a result, waiting actions currently require the host to explicitly call `tick`, and they cannot recover from an event automatically.
+`ActionFlowRuntime.restoreRun` can reload run records, but `matchWaitingRuns` does not call `restoreRun` or `tick`. As a result, waiting actions currently require the host to explicitly decide what to do after a match, and they cannot recover from an event automatically.
 
 ## 2. Goals
 
@@ -45,6 +45,7 @@ Current implemented pieces:
 - `WaitingIndexStore`.
 - MemoryStateStore waiting index.
 - FileStateStore waiting index.
+- `ActionFlowRuntime.matchWaitingRuns(event)` read-only matching.
 - `EventTriggerRegistry` definitions.
 - FileStateStore local persistence.
 
@@ -111,7 +112,9 @@ recoverWaitingRuns(event: RuntimeEvent, options?: EventRecoveryOptions): Promise
 
 The host calls this explicitly. Runtime does not listen to external events.
 
-The API would query the waiting index. For each matching entry, it may attempt to `restoreRun(entry.flowRunId)` depending on the selected strategy. Whether it should immediately call `tick` must be defined separately. If ticking is introduced later, the host must have registered the matching flow and actions.
+The implemented `matchWaitingRuns(event)` API queries the waiting index by `event.name` and returns matching entries only. It does not call `restoreRun`, does not call `tick`, does not wake actions, does not execute triggers, and does not implement exactly-once behavior.
+
+A future recovery API may attempt to `restoreRun(entry.flowRunId)` depending on the selected strategy. Whether it should immediately call `tick` must be defined separately. If ticking is introduced later, the host must have registered the matching flow and actions.
 
 If an entry has no `flowRunId`, the recovery path should skip it. If `restoreRun` fails, the result should either record a skip or surface an error. The recommended first behavior is skip with reason.
 
@@ -208,15 +211,15 @@ Phase 1:
 
 Phase 2:
 
-- Add `RuntimeEvent` and `EventRecoveryResult` types.
+- Add `RuntimeEvent` and `EventRecoveryResult` types. Implemented.
 
 Phase 3:
 
-- Add a read-only `matchWaitingRuns(event)` API.
+- Add a read-only `matchWaitingRuns(event)` API. Implemented.
 
 Phase 4:
 
-- Add `recoverWaitingRuns` Strategy A: match and report only.
+- Add `recoverWaitingRuns` Strategy A: match and report only. Not implemented. Current `matchWaitingRuns` only matches and does not recover.
 
 Phase 5:
 
@@ -232,18 +235,26 @@ Phase 7:
 
 ## 15. Tests Needed
 
-Future tests should cover:
+Implemented tests currently cover:
 
 - Event name matches `waitReason`.
 - Nonmatching event returns empty `matched`.
-- Multiple waiting entries match one event.
 - Missing waiting index support fallback.
+- `matchWaitingRuns` validates event id and name.
+- `matchWaitingRuns` does not restore or tick.
+- `matchWaitingRuns` does not mutate waiting index.
+- `EventTriggerRegistry` does not auto-run during matching.
+- Waiting index errors are surfaced.
+
+Remaining future tests should cover:
+
+- Multiple waiting entries match one event.
 - Stale waiting index entry is reported.
 - Missing `flowRunId` is skipped.
 - Corrupted waiting index surfaces an error.
-- No automatic tick in Strategy A.
-- `EventTriggerRegistry` does not auto-run during recovery.
-- Duplicate event id behavior is documented.
+- Explicit restore preview behavior once designed.
+- Explicit resume/tick recovery policy once designed.
+- Duplicate event id behavior once designed.
 
 ## 16. Open Questions
 
