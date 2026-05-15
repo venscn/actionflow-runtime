@@ -277,11 +277,13 @@ A parallel node has `branches`.
 - `checkHealth()` summarizes pending, committed, and failed batch marker counts.
 - `checkHealth()` can report issue records for pending batches, failed batches, and missing committed target files.
 - `checkHealth()` validates waiting index consistency and reports `waitingIndexIssues`.
+- Waiting index repair APIs are designed but not implemented.
 - Pending manifests are diagnostic only.
 - Committed markers are diagnostic only and do not make batch writes atomic.
 - Failed markers are best-effort diagnostics only and do not roll back or recover partial writes.
 - `checkHealth()` is diagnostic only and does not repair, recover, roll back, delete markers, or validate full data consistency.
 - `checkHealth()` does not repair stale waiting entries.
+- There is no automatic waiting index repair, wakeup, or trigger execution.
 - Missing target file reports do not perform repair.
 - A `clean` health status does not mean durable recovery is guaranteed.
 - `listPendingBatches()` does not mutate pending batches.
@@ -307,6 +309,7 @@ A parallel node has `branches`.
 - FileStateStore stores waiting index entries under `waiting-runs` JSON files.
 - Runtime updates it from `ActionFlowRuntime.tick` when the configured store supports the optional interface.
 - FileStateStore `checkHealth()` can report stale waiting index diagnostics.
+- Waiting index repair APIs are designed but not implemented.
 - Automatic wakeup and event trigger execution are not implemented.
 
 `ProcessedEventStore` is an optional StateStore extension for processed event id tracking:

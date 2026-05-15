@@ -98,6 +98,7 @@ npm run example:file-store-resume
 - [Processed Event ID Design](docs/processed-event-id-design.md)
 - [Duplicate Event Skip Policy](docs/duplicate-event-skip-policy.md)
 - [Stale Waiting Index Health Design](docs/stale-waiting-index-health-design.md)
+- [Waiting Index Repair Design](docs/waiting-index-repair-design.md)
 
 ## Facade Example
 

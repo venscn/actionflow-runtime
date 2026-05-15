@@ -118,6 +118,8 @@ Automatic wakeup is still not implemented.
 
 ## 10. Relationship With Repair APIs
 
+Repair APIs are designed in [Waiting Index Repair Design](waiting-index-repair-design.md), but they are not implemented.
+
 Future repair-oriented APIs could include:
 
 - `inspectWaitingIndex()`
@@ -157,7 +159,7 @@ Implemented tests cover:
 
 Future tests should cover:
 
-- Waiting index repair plan behavior once designed.
+- Waiting index repair plan behavior once implemented.
 - Generic MemoryStateStore health behavior if a generic health API is added.
 
 ## 13. Open Questions

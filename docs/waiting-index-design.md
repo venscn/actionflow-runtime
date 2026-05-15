@@ -146,7 +146,8 @@ Suggested phases:
 - Phase 3: Runtime optional waiting index path. Implemented.
 - Phase 4: FileStateStore waiting index JSON files. Implemented.
 - Phase 5: FileStateStore health report integration. Implemented.
-- Phase 6: event recovery design and first read-only APIs. Partially implemented; automatic wakeup is not implemented.
+- Phase 6: waiting index repair design. Documented in [Waiting Index Repair Design](waiting-index-repair-design.md), not implemented.
+- Phase 7: event recovery design and first read-only APIs. Partially implemented; automatic wakeup is not implemented.
 
 ## 11. Event Recovery Relationship
 
@@ -178,7 +179,7 @@ Known risks:
 - Failed removal can leave stale index entries.
 - FileStateStore does not provide multi-process safety.
 
-See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the FileStateStore read-only health checks. Waiting index repair APIs are not implemented.
+See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the FileStateStore read-only health checks. See [Waiting Index Repair Design](waiting-index-repair-design.md) for the proposed explicit repair APIs. Waiting index repair APIs are not implemented.
 
 ## 13. Tests Needed
 
@@ -200,7 +201,7 @@ Future implementation tests should cover:
 
 - `restoreRun` does not automatically wake waiting runs.
 - Event recovery is not triggered by the index alone.
-- Waiting index repair APIs once designed.
+- Waiting index repair APIs once implemented.
 
 ## 14. Open Questions
 
@@ -210,4 +211,4 @@ Future implementation tests should cover:
 - Should indexed FlowRun status be included?
 - Should sequence/parallel node waiting states be indexed?
 - Should the index be rebuildable from ActionRun records?
-- What explicit repair API should remove stale waiting index entries?
+- Should repair APIs be exposed from ActionFlowRuntime or only store implementations?
