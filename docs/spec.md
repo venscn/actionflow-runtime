@@ -186,7 +186,11 @@ A sequence node has ordered `steps`.
 - `FileStateStore` can be injected through dependencies.
 - It exposes `actions`, `flows`, `triggers`, `store`, and `engine`.
 - `createRun(flowId, runId, version?)` resolves a flow from `FlowRegistry`, creates a FlowRun through `FlowEngine`, saves it to the store, and returns it.
-- Trigger start-flow is designed but not implemented; `registerTrigger` does not create FlowRuns.
+- `startFlowsForEvent(event, options?)` explicitly starts FlowRuns from enabled triggers matching `event.name`.
+- `startFlowsForEvent` supports `dryRun`, `maxTriggers`, deterministic runId strategies, `runIdPrefix`, and `flowVersion`.
+- `registerTrigger` alone does not create FlowRuns.
+- `startFlowsForEvent` does not tick, execute waiting recovery, wake waiting actions, or write processed event records.
+- Trigger filters and input mapping are not implemented.
 - `tick(run, flowId, options?, version?)` resolves a flow, advances it through `FlowEngine`, saves the updated FlowRun, and saves contained ActionRuns.
 - When the configured store supports `saveRunBatch`, `tick` uses it to save the FlowRun and ActionRuns; otherwise it falls back to individual `saveFlowRun` and `saveActionRun` calls.
 - When the configured store supports `WaitingIndexStore`, `tick` updates the waiting index after FlowRun and ActionRun persistence succeeds.
@@ -336,7 +340,7 @@ The following are not implemented:
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
 - WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, FileStateStore stale waiting index health diagnostics, explicit FileStateStore repair plan APIs, read-only `matchWaitingRuns`, read-only `previewEventRecovery`, match/preview-only `recoverWaitingRuns`, and explicit `tickRecoveredRuns`, but automatic wakeup, durable recovery, retry-failed / stale-started duplicate policies, exactly-once behavior, and event trigger execution are not implemented.
 - ProcessedEventStore is implemented by MemoryStateStore and FileStateStore and exposed through explicit ActionFlowRuntime accessors. `recoverWaitingRuns` supports explicit `skip-completed` duplicate policy, but exactly-once behavior, automatic wakeup, event trigger execution, and durable event recovery are not implemented.
-- Trigger start-flow is designed but not implemented. `EventTriggerRegistry` remains descriptive, `registerTrigger` does not start flows, and there is no automatic trigger execution.
+- Trigger start-flow exists as explicit `startFlowsForEvent`, but automatic `handleEvent`, trigger filters, input mapping, exactly-once behavior, event trigger execution policy, and durable recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.
@@ -357,7 +361,7 @@ The following are not implemented:
 - `filter`: placeholder for future event matching metadata.
 - `input`: placeholder for future flow input mapping.
 
-Current support includes `EventTriggerDefinition`, `validateEventTrigger(trigger)`, and `EventTriggerRegistry`. The registry only manages trigger definitions in memory. The trigger start-flow path is designed in [Trigger Start-Flow Design](trigger-start-flow-design.md), but it is not implemented. The registry does not validate whether the target flow exists, automatically start flows, provide an event bus, or resume waiting async actions from events.
+Current support includes `EventTriggerDefinition`, `validateEventTrigger(trigger)`, and `EventTriggerRegistry`. The registry manages trigger definitions in memory. The trigger start-flow path is implemented as explicit `ActionFlowRuntime.startFlowsForEvent(event, options?)`; see [Trigger Start-Flow Design](trigger-start-flow-design.md). The registry does not validate whether the target flow exists, automatically start flows, provide an event bus, execute filters/input mapping, or resume waiting async actions from events.
 
 ## 15. Compatibility Rules
 

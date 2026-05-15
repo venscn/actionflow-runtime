@@ -55,7 +55,7 @@ Current available pieces:
 - `tickRecoveredRuns(result, options)`
 - PackageManifest descriptive rules and triggers
 
-These are enough to design a trigger start-flow path, but no trigger execution API is implemented yet.
+These are enough for the implemented explicit trigger start-flow API, `ActionFlowRuntime.startFlowsForEvent(event, options)`. Automatic event handling and broader trigger execution policy are still not implemented.
 
 ## 5. Trigger Matching Model
 
@@ -73,16 +73,19 @@ The first version should use exact event-name matching only. Filter execution an
 
 Trigger event matching must stay separate from waiting recovery matching. `trigger.event` and waiting `waitReason` may use the same string, but they are different paths.
 
-## 6. Candidate API Shape
+## 6. API Shape
 
-Candidate types, not implemented:
+Implemented types:
 
 ```ts
+type TriggerRunIdStrategy = "event-trigger" | "event-trigger-counter";
+
 interface TriggerStartFlowOptions {
   dryRun?: boolean;
   maxTriggers?: number;
-  runIdStrategy?: "event-trigger" | "event-trigger-counter" | "custom";
+  runIdStrategy?: TriggerRunIdStrategy;
   runIdPrefix?: string;
+  flowVersion?: string;
 }
 
 interface TriggerStartFlowResult {
@@ -100,25 +103,18 @@ interface TriggerStartFlowSkip {
 startFlowsForEvent(event: RuntimeEvent, options?: TriggerStartFlowOptions): TriggerStartFlowResult
 ```
 
-Possible API names:
-
-- `startFlowsForEvent`
-- `previewTriggerStarts`
-- `handleTriggerStarts`
-
-The first implementation should strongly consider preview-only behavior or `dryRun` defaulting to `true`. The design should not force automatic tick behavior.
+`startFlowsForEvent` must be called explicitly by the host. It creates FlowRuns by default, supports `dryRun`, supports `maxTriggers`, and does not call `tick`.
 
 ## 7. Run ID Strategy
 
-Candidate run id strategies:
+Implemented run id strategies:
 
 - `event-trigger`: `${event.id}:${trigger.id}`
 - `event-trigger-counter`: `${event.id}:${trigger.id}:${index}`
-- `custom`: host-provided runId builder
 
 Run ids should be deterministic to make duplicate events diagnosable. Deterministic run ids are not exactly-once behavior.
 
-Recommended first version:
+Current first version:
 
 - Use `event-trigger` deterministic run ids.
 - If a FlowRun with the generated runId already exists, return a skipped result with reason `FlowRun already exists`.
@@ -214,9 +210,9 @@ Candidate behavior:
 - Store persistence failure needs explicit policy; first version should surface it clearly.
 - Missing trigger registry returns an empty result.
 
-## 14. Tests Needed If Implemented
+## 14. Tests
 
-Future tests should cover:
+Implemented tests cover:
 
 - `startFlowsForEvent` matches trigger by event name.
 - Disabled trigger is ignored.
@@ -234,10 +230,15 @@ Future tests should cover:
 - Processed event record is not written unless policy is implemented.
 - Exactly-once is not claimed.
 
+Future tests should cover:
+
+- Trigger filter execution once designed.
+- Trigger input mapping once designed.
+- Trigger processed-event policy once designed.
+- Automatic `handleEvent` policy once designed.
+
 ## 15. Open Questions
 
-- Should the first implementation be dry-run preview only?
-- Should `startFlowsForEvent` create but not tick?
 - Should there be `startAndTickFlowsForEvent`?
 - Should `EventTriggerDefinition` include `flowVersion`?
 - Should `EventTriggerDefinition.input` be static data or a mapping template?

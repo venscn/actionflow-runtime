@@ -4,7 +4,7 @@
 
 ActionRun can currently enter `waiting` status. Runtime can write waiting ActionRuns into a waiting index, and both MemoryStateStore and FileStateStore can query that index.
 
-The runtime now has event recovery helpers: `matchWaitingRuns(event)` can match an external event name to waiting index entries, `previewEventRecovery(event)` can preview stored FlowRun records for matched entries, and `recoverWaitingRuns(event)` currently returns match/preview-only recovery results while recording observe-by-default processed event attempts when supported. `recoverWaitingRuns(event, { duplicatePolicy: "skip-completed" })` can explicitly skip completed processed event records. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
+The runtime now has event recovery helpers: `matchWaitingRuns(event)` can match an external event name to waiting index entries, `previewEventRecovery(event)` can preview stored FlowRun records for matched entries, and `recoverWaitingRuns(event)` currently returns match/preview-only recovery results while recording observe-by-default processed event attempts when supported. `recoverWaitingRuns(event, { duplicatePolicy: "skip-completed" })` can explicitly skip completed processed event records. `ActionFlowRuntime.startFlowsForEvent(event, options)` can explicitly create FlowRuns from enabled triggers. `EventTriggerRegistry` still does not automatically start flows or wake waiting actions.
 
 `ActionFlowRuntime.restoreRun` can reload run records. `previewEventRecovery` and the current `recoverWaitingRuns` may call `restoreRun` for preview, but they do not call `tick`. As a result, waiting actions currently require the host to explicitly decide what to do after a preview, and they cannot recover from an event automatically.
 
@@ -162,7 +162,7 @@ Event recovery for waiting runs is a separate path. Future event handling may ha
 
 The two paths should not be conflated. A single event may eventually do both, but that needs explicit policy.
 
-See [Trigger Start-Flow Design](trigger-start-flow-design.md) for the proposed trigger start-flow path. It is designed but not implemented. `EventTriggerRegistry` still does not execute triggers, and waiting recovery remains independent from trigger-based flow starts.
+See [Trigger Start-Flow Design](trigger-start-flow-design.md) for the explicit trigger start-flow path. `startFlowsForEvent` is implemented and host-called. `EventTriggerRegistry` still does not execute triggers automatically, and waiting recovery remains independent from trigger-based flow starts.
 
 ## 10. Idempotency and Duplicate Events
 
@@ -249,7 +249,7 @@ Phase 7:
 
 Phase 8:
 
-- Integrate the `EventTriggerRegistry` start-flow path separately. Designed in [Trigger Start-Flow Design](trigger-start-flow-design.md), not implemented.
+- Integrate the `EventTriggerRegistry` start-flow path separately. `startFlowsForEvent` is implemented as an explicit create-only API; automatic `handleEvent` and trigger execution policy are not implemented.
 
 ## 15. Tests Needed
 
@@ -276,6 +276,7 @@ Implemented tests currently cover:
 - `tickRecoveredRuns` explicitly ticks recovered runs when called by the host.
 - `tickRecoveredRuns` supports `dryRun`, `maxRuns`, and `continueOnError`.
 - `tickRecoveredRuns` does not execute triggers or write processed event records.
+- `startFlowsForEvent` explicitly creates FlowRuns from enabled matching triggers without ticking or running waiting recovery.
 
 Remaining future tests should cover:
 

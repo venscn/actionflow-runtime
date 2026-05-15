@@ -73,6 +73,28 @@ export interface EventRecoveryTickResult extends EventRecoveryResult {
   runResults: readonly EventRecoveryRunResult[];
 }
 
+export type TriggerRunIdStrategy = "event-trigger" | "event-trigger-counter";
+
+export interface TriggerStartFlowOptions {
+  dryRun?: boolean;
+  maxTriggers?: number;
+  runIdStrategy?: TriggerRunIdStrategy;
+  runIdPrefix?: string;
+  flowVersion?: string;
+}
+
+export interface TriggerStartFlowSkip {
+  triggerId: string;
+  reason: string;
+}
+
+export interface TriggerStartFlowResult {
+  eventId: string;
+  matchedTriggers: readonly EventTriggerDefinition[];
+  startedRuns: readonly FlowEngineRunRecord[];
+  skipped: readonly TriggerStartFlowSkip[];
+}
+
 export interface ActionFlowRuntimeDependencies {
   actionRegistry?: ActionRegistry;
   flowRegistry?: FlowRegistry;
@@ -151,6 +173,93 @@ export class ActionFlowRuntime {
     }
 
     return this.store.deleteProcessedEvent(eventId);
+  }
+
+  startFlowsForEvent(event: RuntimeEvent, options: TriggerStartFlowOptions = {}): TriggerStartFlowResult {
+    validateRuntimeEvent(event);
+    const {
+      dryRun = false,
+      flowVersion,
+      maxTriggers,
+      runIdPrefix,
+      runIdStrategy = "event-trigger"
+    } = options;
+
+    if (maxTriggers !== undefined && (!Number.isInteger(maxTriggers) || maxTriggers < 0)) {
+      throw new Error("maxTriggers must be a non-negative integer");
+    }
+
+    if (runIdStrategy !== "event-trigger" && runIdStrategy !== "event-trigger-counter") {
+      throw new Error("Invalid trigger runId strategy");
+    }
+
+    if (runIdPrefix !== undefined && typeof runIdPrefix !== "string") {
+      throw new Error("runIdPrefix must be a string");
+    }
+
+    const matchedTriggers = this.triggers.list().filter((trigger) => trigger.enabled !== false && trigger.event === event.name);
+    const startedRuns: FlowEngineRunRecord[] = [];
+    const skipped: TriggerStartFlowSkip[] = [];
+    const limit = maxTriggers ?? Number.POSITIVE_INFINITY;
+
+    if (dryRun) {
+      return {
+        eventId: event.id,
+        matchedTriggers,
+        startedRuns,
+        skipped
+      };
+    }
+
+    for (const [index, trigger] of matchedTriggers.entries()) {
+      if (index >= limit) {
+        skipped.push({
+          triggerId: trigger.id,
+          reason: "maxTriggers limit reached"
+        });
+        continue;
+      }
+
+      if (typeof trigger.flow !== "string" || trigger.flow.length === 0) {
+        skipped.push({
+          triggerId: trigger.id,
+          reason: "Missing trigger flow"
+        });
+        continue;
+      }
+
+      const runId = createTriggerRunId({
+        eventId: event.id,
+        triggerId: trigger.id,
+        index,
+        prefix: runIdPrefix,
+        strategy: runIdStrategy
+      });
+
+      if (this.store.getFlowRun(runId)) {
+        skipped.push({
+          triggerId: trigger.id,
+          reason: `FlowRun already exists: ${runId}`
+        });
+        continue;
+      }
+
+      try {
+        startedRuns.push(this.createRun(trigger.flow, runId, flowVersion));
+      } catch (error) {
+        skipped.push({
+          triggerId: trigger.id,
+          reason: describeError(error)
+        });
+      }
+    }
+
+    return {
+      eventId: event.id,
+      matchedTriggers,
+      startedRuns,
+      skipped
+    };
   }
 
   matchWaitingRuns(event: RuntimeEvent): EventRecoveryResult {
@@ -515,6 +624,22 @@ function createProcessedEventRecord(params: {
   }
 
   return record;
+}
+
+function createTriggerRunId(params: {
+  eventId: string;
+  triggerId: string;
+  index: number;
+  prefix?: string;
+  strategy: TriggerRunIdStrategy;
+}): string {
+  const base = params.prefix ? `${params.prefix}:${params.eventId}:${params.triggerId}` : `${params.eventId}:${params.triggerId}`;
+
+  if (params.strategy === "event-trigger-counter") {
+    return `${base}:${params.index}`;
+  }
+
+  return base;
 }
 
 function validateRuntimeEvent(event: RuntimeEvent): void {

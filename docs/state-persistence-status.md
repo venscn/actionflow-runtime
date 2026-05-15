@@ -38,6 +38,7 @@ Current implemented pieces:
 - Waiting Index Repair design.
 - FileStateStore waiting index repair plan APIs.
 - Trigger Start-Flow design.
+- Trigger start-flow explicit API.
 - Processed Event ID design.
 - Processed Event ID store types.
 - MemoryStateStore processed event id.
@@ -57,8 +58,8 @@ The following are not implemented:
 - Waiting action wakeup.
 - Retry-failed / stale-started duplicate policies.
 - Exactly-once behavior.
-- Trigger start-flow implementation.
-- Event trigger execution.
+- Event trigger execution policy / automatic handleEvent.
+- Trigger filter / input mapping.
 - FlowDefinition persistence.
 - EventTriggerDefinition persistence.
 - Database stores.
@@ -116,8 +117,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Trigger start-flow implementation.
-- Phase B: Event trigger execution policy.
+- Phase A: Event trigger execution policy.
+- Phase B: Trigger filter/input mapping design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -125,7 +126,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Trigger start-flow implementation.
 - Event trigger execution policy.
+- Trigger filter/input mapping design.
 
-Recommendation: start with trigger start-flow implementation. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and FileStateStore can report and explicitly repair stale waiting index diagnostics, but trigger start-flow, automatic wakeup, exactly-once behavior, event trigger execution, and durable recovery are still not implemented.
+Recommendation: start with event trigger execution policy. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, FileStateStore can report and explicitly repair stale waiting index diagnostics, and `startFlowsForEvent` can explicitly create FlowRuns from triggers, but automatic handleEvent, trigger filter/input mapping, automatic wakeup, exactly-once behavior, and durable recovery are still not implemented.

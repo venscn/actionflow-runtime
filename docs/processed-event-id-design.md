@@ -222,9 +222,9 @@ Processed event id may eventually apply to both:
 - Start-flow trigger handling.
 - Waiting-run recovery.
 
-Those paths must still be designed separately. See [Trigger Start-Flow Design](trigger-start-flow-design.md) for the proposed trigger path. If one event can both start a flow and recover a waiting run, the processed event record should either include separate sub-results or define its scope clearly.
+Those paths must still be designed separately. See [Trigger Start-Flow Design](trigger-start-flow-design.md) for the explicit `startFlowsForEvent` trigger path. If one event can both start a flow and recover a waiting run, the processed event record should either include separate sub-results or define its scope clearly.
 
-`EventTriggerRegistry` still does not execute automatically. Processed event records for trigger-path results are not implemented, and exactly-once behavior is not implemented.
+`EventTriggerRegistry` still does not execute automatically. `startFlowsForEvent` currently does not write processed event records. Processed event records for trigger-path results are not implemented, and exactly-once behavior is not implemented.
 
 ## 14. Health Check Relationship
 

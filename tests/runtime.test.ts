@@ -1688,6 +1688,291 @@ describe("ActionFlowRuntime", () => {
     expect(runtime.store.listFlowRuns()).toEqual([]);
   });
 
+  it("startFlowsForEvent matches trigger by event name and creates FlowRun", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger.created",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    const result = runtime.startFlowsForEvent({ id: "event-1", name: "record.created" });
+
+    expect(result.matchedTriggers).toHaveLength(1);
+    expect(result.startedRuns).toHaveLength(1);
+    expect(result.startedRuns[0]).toEqual(expect.objectContaining({ flowId: "flow.basic" }));
+    expect(runtime.store.getFlowRun("event-1:trigger.created")).toEqual(result.startedRuns[0]);
+  });
+
+  it("startFlowsForEvent ignores disabled trigger", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger.created",
+      event: "record.created",
+      flow: "flow.basic",
+      enabled: false
+    });
+
+    const result = runtime.startFlowsForEvent({ id: "event-1", name: "record.created" });
+
+    expect(result).toEqual({
+      eventId: "event-1",
+      matchedTriggers: [],
+      startedRuns: [],
+      skipped: []
+    });
+    expect(runtime.store.listFlowRuns()).toEqual([]);
+  });
+
+  it("startFlowsForEvent returns empty for no matching trigger", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger.created",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    expect(runtime.startFlowsForEvent({ id: "event-1", name: "record.updated" })).toEqual({
+      eventId: "event-1",
+      matchedTriggers: [],
+      startedRuns: [],
+      skipped: []
+    });
+  });
+
+  it("startFlowsForEvent skips missing flow", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerTrigger({
+      id: "trigger.created",
+      event: "record.created",
+      flow: "missing.flow"
+    });
+
+    const result = runtime.startFlowsForEvent({ id: "event-1", name: "record.created" });
+
+    expect(result.matchedTriggers).toHaveLength(1);
+    expect(result.startedRuns).toEqual([]);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({
+        triggerId: "trigger.created",
+        reason: expect.stringContaining("Flow not found")
+      })
+    ]);
+  });
+
+  it("startFlowsForEvent uses deterministic event-trigger runId", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-1",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    const result = runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" });
+
+    expect(result.startedRuns[0]?.id).toBe("evt-1:trigger-1");
+    expect(runtime.store.getFlowRun("evt-1:trigger-1")).toBeDefined();
+  });
+
+  it("startFlowsForEvent supports runIdPrefix", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-1",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    const result = runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" }, { runIdPrefix: "prefix" });
+
+    expect(result.startedRuns[0]?.id).toBe("prefix:evt-1:trigger-1");
+    expect(runtime.store.getFlowRun("prefix:evt-1:trigger-1")).toBeDefined();
+  });
+
+  it("startFlowsForEvent supports event-trigger-counter strategy", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-a",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+    runtime.registerTrigger({
+      id: "trigger-b",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    const result = runtime.startFlowsForEvent(
+      { id: "evt-1", name: "record.created" },
+      { runIdStrategy: "event-trigger-counter" }
+    );
+
+    expect(result.startedRuns.map((run) => run.id)).toEqual(["evt-1:trigger-a:0", "evt-1:trigger-b:1"]);
+  });
+
+  it("startFlowsForEvent skips duplicate runId and does not overwrite existing FlowRun", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-1",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    const first = runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" });
+    const originalRun = runtime.store.getFlowRun("evt-1:trigger-1");
+    const second = runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" });
+
+    expect(first.startedRuns).toHaveLength(1);
+    expect(second.startedRuns).toEqual([]);
+    expect(second.skipped).toEqual([
+      expect.objectContaining({
+        triggerId: "trigger-1",
+        reason: expect.stringContaining("already exists")
+      })
+    ]);
+    expect(runtime.store.getFlowRun("evt-1:trigger-1")).toEqual(originalRun);
+  });
+
+  it("startFlowsForEvent maxTriggers limits started runs", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    for (const triggerId of ["trigger-a", "trigger-b", "trigger-c"]) {
+      runtime.registerTrigger({
+        id: triggerId,
+        event: "record.created",
+        flow: "flow.basic"
+      });
+    }
+
+    const result = runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" }, { maxTriggers: 1 });
+
+    expect(result.matchedTriggers).toHaveLength(3);
+    expect(result.startedRuns).toHaveLength(1);
+    expect(result.skipped).toEqual([
+      expect.objectContaining({ triggerId: "trigger-b", reason: "maxTriggers limit reached" }),
+      expect.objectContaining({ triggerId: "trigger-c", reason: "maxTriggers limit reached" })
+    ]);
+  });
+
+  it("startFlowsForEvent validates maxTriggers", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(() => runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" }, { maxTriggers: -1 })).toThrow(
+      "maxTriggers must be a non-negative integer"
+    );
+    expect(() => runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" }, { maxTriggers: 1.5 })).toThrow(
+      "maxTriggers must be a non-negative integer"
+    );
+  });
+
+  it("startFlowsForEvent validates runIdStrategy", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(() =>
+      runtime.startFlowsForEvent(
+        { id: "evt-1", name: "record.created" },
+        { runIdStrategy: "bad" as never }
+      )
+    ).toThrow("Invalid trigger runId strategy");
+  });
+
+  it("startFlowsForEvent dryRun does not create FlowRun", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-1",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    const result = runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" }, { dryRun: true });
+
+    expect(result.matchedTriggers).toHaveLength(1);
+    expect(result.startedRuns).toEqual([]);
+    expect(result.skipped).toEqual([]);
+    expect(runtime.store.listFlowRuns()).toEqual([]);
+  });
+
+  it("startFlowsForEvent validates runIdPrefix", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(() =>
+      runtime.startFlowsForEvent(
+        { id: "evt-1", name: "record.created" },
+        { runIdPrefix: 1 as never }
+      )
+    ).toThrow("runIdPrefix must be a string");
+  });
+
+  it("startFlowsForEvent does not tick by default", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-1",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    const result = runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" });
+
+    expect(result.startedRuns[0]).toEqual(expect.objectContaining({ status: "ready" }));
+    expect(runtime.store.listActionRuns()).toEqual([]);
+  });
+
+  it("startFlowsForEvent does not call waiting recovery", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-1",
+      event: "user.created",
+      flow: "flow.basic"
+    });
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    const before = store.listWaitingActionRuns();
+
+    runtime.startFlowsForEvent({ id: "evt-1", name: "user.created" });
+
+    expect(store.listWaitingActionRuns()).toEqual(before);
+  });
+
+  it("startFlowsForEvent does not write processed event records", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-1",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" });
+
+    expect(runtime.listProcessedEvents()).toEqual([]);
+  });
+
+  it("startFlowsForEvent passes flowVersion", () => {
+    const runtime = new ActionFlowRuntime();
+    runtime.registerFlow(createVersionedFlow("flow.basic", "1.0.0", "echo"));
+    runtime.registerFlow(createVersionedFlow("flow.basic", "2.0.0", "echo"));
+    runtime.registerTrigger({
+      id: "trigger-1",
+      event: "record.created",
+      flow: "flow.basic"
+    });
+
+    const result = runtime.startFlowsForEvent({ id: "evt-1", name: "record.created" }, { flowVersion: "1.0.0" });
+
+    expect(result.startedRuns).toHaveLength(1);
+    expect(result.skipped).toEqual([]);
+  });
+
   it("checks package manifest structure before registry consistency", () => {
     const runtime = new ActionFlowRuntime();
 
@@ -1862,9 +2147,13 @@ function createRecoveryResult(recovered: readonly FlowEngineRunRecord[]): EventR
 }
 
 function createFlow(id: string, action: string): FlowDefinition {
+  return createVersionedFlow(id, "1.0.0", action);
+}
+
+function createVersionedFlow(id: string, version: string, action: string): FlowDefinition {
   return {
     id,
-    version: "1.0.0",
+    version,
     root: {
       type: "action",
       id: "node-1",
