@@ -252,6 +252,8 @@ Recovering waiting runs and starting new flows are different paths.
 
 Those paths must be configurable. Runtime should not default to doing both.
 
+See [Trigger Start-Flow Design](trigger-start-flow-design.md) for the proposed trigger start-flow path. That path is independent from `tickRecoveredRuns`: `tickRecoveredRuns` only processes recovered FlowRuns passed by the host and does not start new flows.
+
 ## 12. StateStore Requirements
 
 Strategy B needs:

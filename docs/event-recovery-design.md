@@ -162,6 +162,8 @@ Event recovery for waiting runs is a separate path. Future event handling may ha
 
 The two paths should not be conflated. A single event may eventually do both, but that needs explicit policy.
 
+See [Trigger Start-Flow Design](trigger-start-flow-design.md) for the proposed trigger start-flow path. It is designed but not implemented. `EventTriggerRegistry` still does not execute triggers, and waiting recovery remains independent from trigger-based flow starts.
+
 ## 10. Idempotency and Duplicate Events
 
 Risks:
@@ -202,9 +204,9 @@ Event Recovery depends on `WaitingIndexStore`.
 
 ## 13. Health Check Relationship
 
-`checkHealth` may later validate stale waiting index entries. See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the proposed read-only checks.
+FileStateStore `checkHealth` can validate stale waiting index entries. See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the read-only checks.
 
-Current health reporting does not verify that waiting entries correspond to existing ActionRun records. Stale waiting index health checks are designed but not implemented. Future issues could include:
+Current health reporting can verify that waiting entries correspond to existing ActionRun records. Future health improvements could include:
 
 - Missing waiting action target.
 - Stale waiting index entry.
@@ -247,7 +249,7 @@ Phase 7:
 
 Phase 8:
 
-- Integrate the `EventTriggerRegistry` start-flow path separately.
+- Integrate the `EventTriggerRegistry` start-flow path separately. Designed in [Trigger Start-Flow Design](trigger-start-flow-design.md), not implemented.
 
 ## 15. Tests Needed
 

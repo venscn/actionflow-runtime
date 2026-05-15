@@ -222,9 +222,9 @@ Processed event id may eventually apply to both:
 - Start-flow trigger handling.
 - Waiting-run recovery.
 
-Those paths must still be designed separately. If one event can both start a flow and recover a waiting run, the processed event record should either include separate sub-results or define its scope clearly.
+Those paths must still be designed separately. See [Trigger Start-Flow Design](trigger-start-flow-design.md) for the proposed trigger path. If one event can both start a flow and recover a waiting run, the processed event record should either include separate sub-results or define its scope clearly.
 
-`EventTriggerRegistry` still does not execute automatically.
+`EventTriggerRegistry` still does not execute automatically. Processed event records for trigger-path results are not implemented, and exactly-once behavior is not implemented.
 
 ## 14. Health Check Relationship
 
@@ -234,7 +234,7 @@ Future `checkHealth` could report:
 - `failed` event records.
 - Processed event records with missing referenced runs.
 
-`checkHealth` should stay read-only. Cleanup should be an explicit API. Waiting index consistency checks are designed separately in [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) and are not implemented.
+`checkHealth` should stay read-only. Cleanup should be an explicit API. Waiting index consistency checks are described in [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) and implemented for FileStateStore diagnostics.
 
 ## 15. Tests Needed If Implemented
 
