@@ -81,10 +81,14 @@ In-memory writes are not expected to fail under normal operation, so this mostly
 FileStateStore phases:
 
 - Phase 1: best-effort batch save. Write records in a clear order and throw on failure. Implemented.
-- Phase 2: staging directory. Write all target files into a staging area before moving them into place. Not implemented.
-- Phase 3: commit marker / manifest. Record batch membership and commit status so startup or restore tooling can detect incomplete batches. Not implemented.
+- Phase 2: pending manifest writing. Implemented.
+- Phase 3: staging record writes and validation before best-effort target writes. Implemented.
+- Phase 4: committed marker writing after successful best-effort target writes. Implemented.
+- Phase 5: failed marker writing after failed batch attempts once a pending manifest exists. Implemented.
+- Phase 6: batch marker inspection with `listPendingBatches()`, `listCommittedBatches()`, and `listFailedBatches()`. Implemented.
+- Phase 7: `checkHealth()` diagnostic summary over pending, committed, and failed markers. Implemented.
 
-The current FileStateStore batch save is best-effort only. It is not an atomic transaction. Windows rename and replace behavior needs careful handling, especially when target files already exist or are held open by another process.
+The current FileStateStore batch save is best-effort only. It is not an atomic transaction. Marker files and `checkHealth()` are diagnostic only: they do not roll back, repair, recover, or validate full data consistency. Windows rename and replace behavior needs careful handling, especially when target files already exist or are held open by another process.
 
 ## 8. Error Handling
 
@@ -107,12 +111,20 @@ Implemented tests currently cover:
 - `MemoryStateStore` batch saves FlowRun and ActionRun records.
 - `FileStateStore` batch writes ActionRun / FlowRun records.
 - `restoreRun` after batch save works.
+- `FileStateStore` writes pending manifests.
+- `FileStateStore` writes and validates staging records.
+- `FileStateStore` writes committed markers.
+- `FileStateStore` writes failed markers on batch failure after pending manifest creation.
+- `FileStateStore` lists pending, committed, and failed batch markers.
+- `FileStateStore.checkHealth()` summarizes batch marker state without mutation.
 
 Remaining future tests may cover:
 
-- `FileStateStore` batch failure surfaces an error.
 - No duplicate ActionRuns after restore.
-- Staging / commit marker behavior once implemented.
+- Target write failure surfaces the original error.
+- Rollback design evaluation.
+- Atomic recovery design.
+- Database-backed transaction stores.
 
 ## 10. Implementation Plan
 
@@ -133,13 +145,16 @@ Status: implemented. FileStateStore writes the FlowRun first, then ActionRuns in
 
 Phase 3:
 
-- Design FileStateStore staging / commit marker behavior.
-- See [FileStateStore Staging Design](file-state-store-staging-design.md) for the proposed staging / commit marker design.
-- Batch id and manifest helpers are separate groundwork for this phase.
-- Pending manifest writing exists as groundwork, but staging records and commit marker behavior remain unimplemented.
-- Pending batch inspection exists for reading pending manifests, but staging records and commit marker behavior remain unimplemented.
+- Add FileStateStore batch markers and inspection.
+- See [FileStateStore Staging Design](file-state-store-staging-design.md) for the staging / commit marker design.
+- Pending manifest writing is implemented.
+- Staging record writes and validation are implemented.
+- Committed marker writing is implemented.
+- Failed marker writing is implemented.
+- Batch marker inspection is implemented.
+- `checkHealth()` is implemented as a read-only diagnostic summary.
 
-Status: not implemented.
+Status: partially implemented. Rollback, atomic multi-file batch recovery, and durable recovery are not implemented.
 
 Phase 4:
 
@@ -151,5 +166,5 @@ Phase 4:
 - Is a transaction id needed?
 - Should all records in a batch share the same `savedAt` timestamp?
 - Is partial failure metadata needed?
-- Is a commit marker required for FileStateStore?
+- Should committed markers be retained indefinitely or cleaned up by a future maintenance API?
 - Should batch save eventually become a required `StateStore` method?

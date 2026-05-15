@@ -187,11 +187,14 @@ Implemented:
 - FileStateStore best-effort batch save
 - FileStateStore pending batch manifest diagnostics
 - FileStateStore pending batch inspection
+- FileStateStore committed batch marker diagnostics
+- FileStateStore failed batch marker diagnostics
+- FileStateStore batch health check
 
 Not implemented yet:
 
-- committed / failed batch markers
-- staging record writes
+- rollback
+- atomic multi-file batch recovery
 - atomic multi-file transactions
 - durable recovery after process restart
 - variable/template binding between flow nodes
