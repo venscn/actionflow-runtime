@@ -247,9 +247,12 @@ A parallel node has `branches`.
 - It implements best-effort `saveRunBatch` for ActionRun / FlowRun records.
 - `saveRunBatch` writes a pending batch manifest before best-effort record writes.
 - `saveRunBatch` writes staging record envelopes and validates they can be parsed before best-effort target writes.
+- `saveRunBatch` writes a committed marker after successful best-effort target writes.
 - Staging records are validation and diagnostic groundwork only.
 - `listPendingBatches()` can list and parse pending batch manifests.
+- `listCommittedBatches()` can list and parse committed markers.
 - Pending manifests are diagnostic only.
+- Committed markers are diagnostic only and do not make batch writes atomic.
 - `listPendingBatches()` does not mutate pending batches.
 - Invalid or corrupted pending manifests are reported as errors.
 - It can persist yielded sliceable ActionRun records as long as action state is JSON-compatible.
@@ -258,7 +261,7 @@ A parallel node has `branches`.
 - It is useful for local development and inspection.
 - It is not a durable recovery system.
 - It does not provide atomic multi-file transactions.
-- It does not implement committed markers, failed markers, or atomic recovery.
+- It does not implement failed markers, rollback, or atomic recovery.
 - It does not persist FlowDefinition or EventTriggerDefinition.
 - It does not provide event recovery.
 - It does not guarantee multi-process write safety.
@@ -269,7 +272,7 @@ The following are not implemented:
 
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
-- FileStateStore pending manifests and staging record writes exist, but commit markers, failed markers, and atomic batch recovery are not implemented.
+- FileStateStore pending manifests, staging record writes, and committed markers exist, but failed markers, rollback, and atomic batch recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.

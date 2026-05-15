@@ -17,6 +17,8 @@ Current implemented pieces:
 - Pending batch manifest writing.
 - Pending staging record writes and validation.
 - `listPendingBatches` pending manifest inspection.
+- Committed marker writing.
+- `listCommittedBatches` committed marker inspection.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -32,8 +34,8 @@ The following are not implemented:
 - EventTriggerDefinition persistence.
 - Database stores.
 - Transaction / atomic multi-file batch save.
-- Committed marker.
 - Failed marker.
+- Rollback.
 - Atomic multi-file batch recovery.
 - Schema migration.
 - Production concurrency safety.
@@ -70,6 +72,7 @@ Known risks:
 - FlowRun and ActionRun saves now use batch when supported, but FileStateStore batch remains best-effort and not atomic.
 - Partial write risk still exists for FileStateStore.
 - Pending manifests help diagnose batch writes but do not prevent partial writes.
+- Committed markers improve inspection but do not make writes atomic.
 - `listPendingBatches` can report invalid manifests but does not repair them.
 - Corrupted JSON fails reads and lists.
 - There is no migration story yet.
@@ -82,11 +85,10 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: commit marker design / implementation.
-- Phase B: failed marker design / implementation.
-- Phase C: store health check API.
-- Phase D: waiting index design.
-- Phase E: event recovery design.
+- Phase A: failed marker design / implementation.
+- Phase B: store health check API.
+- Phase C: waiting index design.
+- Phase D: event recovery design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -94,7 +96,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- FileStateStore commit marker design / implementation.
 - FileStateStore failed marker design / implementation.
+- FileStateStore store health check API.
 
-Recommendation: start with FileStateStore commit marker design / implementation. Pending manifests and staging records can now describe and validate batch attempts, but commit markers are still needed before batch completeness checks become useful.
+Recommendation: start with FileStateStore failed marker design / implementation. Pending manifests, staging records, and committed markers can now describe successful batch attempts, but failed markers are still needed before store health checks can clearly distinguish incomplete and failed batches.

@@ -1,6 +1,6 @@
 # FileStateStore Staging Design
 
-This document tracks the staging directory and commit marker approach for FileStateStore batch writes. Pending manifests and staging record writes are partially implemented; commit markers, failed markers, rollback, and durable recovery are not implemented.
+This document tracks the staging directory and commit marker approach for FileStateStore batch writes. Pending manifests, staging record writes, and committed marker writes are partially implemented; failed markers, rollback, and durable recovery are not implemented.
 
 ## 1. Problem
 
@@ -125,7 +125,7 @@ Future APIs could include:
 - `inspectBatches()`
 - `checkStoreHealth()`
 
-FileStateStore currently exposes `listPendingBatches()` for manual inspection. It reads and parses pending batch manifests without mutating them. It does not automatically recover, mark pending batches as failed, or change runtime execution. Invalid or corrupted pending manifests are reported as errors.
+FileStateStore currently exposes `listPendingBatches()` and `listCommittedBatches()` for manual inspection. They read and parse batch manifests without mutating them. They do not automatically recover, mark pending batches as failed, or change runtime execution. Invalid or corrupted manifests are reported as errors.
 
 If a pending batch is found, the runtime should not automatically recover it. Tooling can report incomplete batches and let the host or user decide what to do.
 
@@ -165,6 +165,8 @@ Phase 5:
 
 - Add commit marker support.
 
+Status: partially implemented. FileStateStore writes a committed marker after successful best-effort target writes and exposes `listCommittedBatches()` for read-only inspection. The committed marker is diagnostic only; it does not change `restoreRun` behavior, provide rollback, or make the batch atomic.
+
 Phase 6:
 
 - Add store health inspection helper.
@@ -175,7 +177,6 @@ Status: partially implemented for pending manifests only. `FileStateStore.listPe
 
 Future tests should cover:
 
-- Successful batch creates committed marker.
 - Failed batch leaves pending/failed marker.
 - Target write failure surfaces an error.
 - `restoreRun` after committed batch works.

@@ -29,12 +29,18 @@ export interface FileStateStorePendingBatch {
   manifest: FileStoreBatchManifest;
 }
 
+export interface FileStateStoreCommittedBatch {
+  path: string;
+  manifest: FileStoreBatchManifest;
+}
+
 export class FileStateStore implements BatchStateStore {
   private readonly rootDir: string;
   private readonly actionRunsDir: string;
   private readonly flowRunsDir: string;
   private readonly batchesDir: string;
   private readonly pendingBatchesDir: string;
+  private readonly committedBatchesDir: string;
 
   constructor(options: FileStateStoreOptions) {
     if (typeof options.rootDir !== "string" || options.rootDir.length === 0) {
@@ -46,6 +52,7 @@ export class FileStateStore implements BatchStateStore {
     this.flowRunsDir = path.join(this.rootDir, "flow-runs");
     this.batchesDir = path.join(this.rootDir, "batches");
     this.pendingBatchesDir = path.join(this.batchesDir, "pending");
+    this.committedBatchesDir = path.join(this.batchesDir, "committed");
   }
 
   saveActionRun(run: ActionRunRecord): void {
@@ -77,6 +84,8 @@ export class FileStateStore implements BatchStateStore {
     for (const actionRun of batch.actionRuns ?? []) {
       this.saveActionRun(actionRun);
     }
+
+    this.writeCommittedBatchMarker(manifest);
   }
 
   getFlowRun(flowRunId: string): FlowRunRecord | undefined {
@@ -88,24 +97,11 @@ export class FileStateStore implements BatchStateStore {
   }
 
   listPendingBatches(): readonly FileStateStorePendingBatch[] {
-    this.assertManagedDirectory(this.pendingBatchesDir);
+    return this.listBatchManifests(this.pendingBatchesDir, "pending");
+  }
 
-    if (!existsSync(this.pendingBatchesDir)) {
-      return [];
-    }
-
-    return readdirSync(this.pendingBatchesDir)
-      .filter((fileName) => fileName.endsWith(".json"))
-      .sort()
-      .map((fileName) => {
-        const filePath = path.join(this.pendingBatchesDir, fileName);
-        const raw = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
-
-        return {
-          path: filePath,
-          manifest: parseBatchManifest(raw)
-        };
-      });
+  listCommittedBatches(): readonly FileStateStoreCommittedBatch[] {
+    return this.listBatchManifests(this.committedBatchesDir, "committed");
   }
 
   deleteActionRun(runId: string): boolean {
@@ -158,6 +154,20 @@ export class FileStateStore implements BatchStateStore {
     this.writeJsonFile(targetPath, manifest);
 
     return manifest;
+  }
+
+  private writeCommittedBatchMarker(pendingManifest: FileStoreBatchManifest): void {
+    const manifest = createBatchManifest({
+      batchId: pendingManifest.batchId,
+      status: "committed",
+      flowRunId: pendingManifest.flowRunId,
+      actionRunIds: pendingManifest.actionRunIds,
+      targetFiles: pendingManifest.targetFiles
+    });
+    const targetPath = path.join(this.committedBatchesDir, `${safeFileName(manifest.batchId)}.json`);
+
+    this.ensureManagedDirectory(this.committedBatchesDir);
+    this.writeJsonFile(targetPath, manifest);
   }
 
   private writeAndValidateStagingRecords(batch: StateStoreRunBatch, manifest: FileStoreBatchManifest): void {
@@ -243,6 +253,35 @@ export class FileStateStore implements BatchStateStore {
   private readRecordFile<T>(filePath: string, kind: "actionRun" | "flowRun"): T {
     const raw = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
     return parseEnvelope<T>(raw, kind).data;
+  }
+
+  private listBatchManifests(
+    dir: string,
+    expectedStatus: "pending" | "committed"
+  ): Array<{ path: string; manifest: FileStoreBatchManifest }> {
+    this.assertManagedDirectory(dir);
+
+    if (!existsSync(dir)) {
+      return [];
+    }
+
+    return readdirSync(dir)
+      .filter((fileName) => fileName.endsWith(".json"))
+      .sort()
+      .map((fileName) => {
+        const filePath = path.join(dir, fileName);
+        const raw = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+        const manifest = parseBatchManifest(raw);
+
+        if (manifest.status !== expectedStatus) {
+          throw new Error(`Unexpected batch status: ${manifest.status}`);
+        }
+
+        return {
+          path: filePath,
+          manifest
+        };
+      });
   }
 
   private deleteRecord(dir: string, id: string): boolean {

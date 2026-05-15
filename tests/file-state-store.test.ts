@@ -455,6 +455,157 @@ describe("FileStateStore", () => {
     expect(batch.manifest.actionRunIds).toEqual(["flow-run-1:node-1"]);
   });
 
+  it("saveRunBatch writes committed marker after successful target writes", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const flowRun = createFlowRun("flow-run-1", "running");
+    const actionRun = createActionRun("flow-run-1:node-1", "done");
+
+    store.saveRunBatch({
+      flowRun,
+      actionRuns: [actionRun]
+    });
+
+    const [batch] = store.listCommittedBatches();
+
+    expect(batch.manifest).toMatchObject({
+      status: "committed",
+      flowRunId: "flow-run-1",
+      actionRunIds: ["flow-run-1:node-1"]
+    });
+    expect(batch.manifest.targetFiles).toEqual([
+      `flow-runs/${safeFileName("flow-run-1")}.json`,
+      `action-runs/${safeFileName("flow-run-1:node-1")}.json`
+    ]);
+    expect(readOnlyCommittedBatchManifest(rootDir)).toEqual(batch.manifest);
+    expect(store.getFlowRun("flow-run-1")).toEqual(flowRun);
+    expect(store.getActionRun("flow-run-1:node-1")).toEqual(actionRun);
+  });
+
+  it("saveRunBatch does not write committed marker when staging validation fails", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const invalidActionRun = { ...createActionRun("flow-run-1:node-1", "ready"), state: undefined };
+
+    expect(() =>
+      store.saveRunBatch({
+        flowRun: createFlowRun("flow-run-1", "running"),
+        actionRuns: [invalidActionRun]
+      })
+    ).toThrow("$.state");
+
+    expect(listPendingBatchManifestFiles(rootDir)).toHaveLength(1);
+    expect(store.listCommittedBatches()).toEqual([]);
+  });
+
+  it("listCommittedBatches returns an empty list when committed directory is missing", () => {
+    const store = createStore();
+
+    expect(store.listCommittedBatches()).toEqual([]);
+  });
+
+  it("listCommittedBatches returns committed markers in deterministic order", () => {
+    const store = createStore();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-2", "running"),
+      actionRuns: [createActionRun("flow-run-2:node-1", "done")]
+    });
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    const batches = store.listCommittedBatches();
+    const paths = batches.map((batch) => batch.path);
+
+    expect(batches).toHaveLength(2);
+    expect(paths).toEqual([...paths].sort());
+    expect(batches.map((batch) => batch.manifest.status)).toEqual(["committed", "committed"]);
+  });
+
+  it("listCommittedBatches throws on corrupted JSON", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeCommittedBatchFile(rootDir, "bad.json", "{");
+
+    expect(() => store.listCommittedBatches()).toThrow();
+  });
+
+  it("listCommittedBatches throws on invalid manifest", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeCommittedBatchFile(
+      rootDir,
+      "bad.json",
+      JSON.stringify({
+        schemaVersion: 2,
+        kind: "runBatch",
+        batchId: "batch-1",
+        createdAt: new Date().toISOString(),
+        status: "committed",
+        actionRunIds: [],
+        targetFiles: []
+      })
+    );
+
+    expect(() => store.listCommittedBatches()).toThrow("Unsupported batch manifest schemaVersion");
+  });
+
+  it("listCommittedBatches throws if manifest status is not committed", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeCommittedBatchFile(
+      rootDir,
+      "bad.json",
+      JSON.stringify({
+        schemaVersion: 1,
+        kind: "runBatch",
+        batchId: "batch-1",
+        createdAt: new Date().toISOString(),
+        status: "pending",
+        actionRunIds: [],
+        targetFiles: []
+      })
+    );
+
+    expect(() => store.listCommittedBatches()).toThrow("Unexpected batch status: pending");
+  });
+
+  it("clear removes committed markers", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    expect(store.listCommittedBatches()).toHaveLength(1);
+
+    store.clear();
+
+    expect(existsSync(rootDir)).toBe(true);
+    expect(store.listCommittedBatches()).toEqual([]);
+  });
+
+  it("committed marker uses safe paths for unsafe ids", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const unsafeFlowRunId = 'a/b\\c:d*e?f"g<h>i|j';
+    const unsafeActionRunId = 'x/y\\z:q*r?s"t<u>v|w';
+
+    store.saveRunBatch({
+      flowRun: createFlowRun(unsafeFlowRunId, "running"),
+      actionRuns: [createActionRun(unsafeActionRunId, "done")]
+    });
+
+    const manifest = readOnlyCommittedBatchManifest(rootDir);
+
+    expect(manifest.status).toBe("committed");
+    for (const targetFile of manifest.targetFiles) {
+      const segments = targetFile.split("/");
+
+      expect(segments).not.toContain("..");
+      for (const segment of segments) {
+        expect(segment).not.toMatch(/[\\:*?"<>|]/);
+      }
+    }
+  });
+
   it("listPendingBatches returns an empty list when no pending directory exists", () => {
     const store = createStore();
 
@@ -586,6 +737,12 @@ function writePendingBatchFile(rootDir: string, fileName: string, content: strin
   writeFileSync(path.join(dir, fileName), content, "utf8");
 }
 
+function writeCommittedBatchFile(rootDir: string, fileName: string, content: string): void {
+  const dir = path.join(rootDir, "batches", "committed");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, fileName), content, "utf8");
+}
+
 function listPendingBatchManifestFiles(rootDir: string): string[] {
   const dir = path.join(rootDir, "batches", "pending");
 
@@ -604,6 +761,26 @@ function readOnlyPendingBatchManifest(rootDir: string): FileStoreBatchManifest {
   expect(files).toHaveLength(1);
 
   return parseBatchManifest(JSON.parse(readFileSync(files[0], "utf8")) as unknown);
+}
+
+function readOnlyCommittedBatchManifest(rootDir: string): FileStoreBatchManifest {
+  const files = listCommittedBatchManifestFiles(rootDir);
+
+  expect(files).toHaveLength(1);
+
+  return parseBatchManifest(JSON.parse(readFileSync(files[0], "utf8")) as unknown);
+}
+
+function listCommittedBatchManifestFiles(rootDir: string): string[] {
+  const dir = path.join(rootDir, "batches", "committed");
+
+  if (!existsSync(dir)) {
+    return [];
+  }
+
+  return readdirSync(dir)
+    .filter((fileName) => fileName.endsWith(".json"))
+    .map((fileName) => path.join(dir, fileName));
 }
 
 function pendingBatchRecordsDir(rootDir: string, manifest: FileStoreBatchManifest): string {
