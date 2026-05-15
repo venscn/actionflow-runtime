@@ -2,7 +2,7 @@
 
 ## 1. Problem
 
-`recoverWaitingRuns(event)` currently performs match and restore preview work, and records observe-only processed event attempts when `ProcessedEventStore` is available.
+`recoverWaitingRuns(event)` currently performs match and restore preview work, and records observe-by-default processed event attempts when `ProcessedEventStore` is available. `recoverWaitingRuns(event, { duplicatePolicy: "skip-completed" })` explicitly skips completed processed event records.
 
 It does not call `tick`, does not wake waiting actions, and does not execute triggers. Real recovery execution still requires FlowEngine ticking, but automatic ticking is risky: it can repeat execution, amplify side effects, or resume stale waiting index entries.
 
@@ -35,9 +35,9 @@ The host needs an explicit way to choose whether to tick, which FlowRun to tick,
 
 - `matchWaitingRuns(event)`: read-only match.
 - `previewEventRecovery(event)`: match plus restore preview.
-- `recoverWaitingRuns(event)`: match plus restore preview plus observe-only processed event records.
+- `recoverWaitingRuns(event)`: match plus restore preview plus observe-by-default processed event records.
 - `recoverWaitingRuns(event)` does not tick.
-- `recoverWaitingRuns(event)` does not skip duplicates.
+- `recoverWaitingRuns(event)` defaults to observe behavior and does not skip duplicates unless `duplicatePolicy: "skip-completed"` is explicitly provided.
 - `recoverWaitingRuns(event)` does not wake waiting actions.
 - `recoverWaitingRuns(event)` does not execute triggers.
 - `tick` still requires registered flow and actions.
@@ -123,7 +123,7 @@ Recommended first path: Strategy C, or Strategy B if convenience is more importa
 Keep:
 
 ```ts
-recoverWaitingRuns(event): EventRecoveryResult
+recoverWaitingRuns(event, options?): EventRecoveryResult
 ```
 
 Implemented explicit helper:
@@ -159,7 +159,7 @@ Implemented first-version rules:
 10. Tick errors produce structured failed run results.
 11. `continueOnError` is supported and defaults to `true`.
 
-`recoverWaitingRuns` remains no-tick. `tickRecoveredRuns` does not execute EventTriggerRegistry and does not write processed event records. Duplicate skip and exactly-once behavior remain unimplemented.
+`recoverWaitingRuns` remains no-tick. `tickRecoveredRuns` does not execute EventTriggerRegistry and does not write processed event records. Retry-failed / stale-started duplicate policies and exactly-once behavior remain unimplemented.
 
 ## 9. Safety Rules
 
@@ -168,7 +168,7 @@ Implemented first-version rules:
 - Do not execute EventTriggerRegistry automatically.
 - Do not inject event payload into action state.
 - Do not claim exactly-once behavior.
-- Do not skip duplicate events by default until a duplicate skip policy exists.
+- Do not skip duplicate events by default; only explicit `duplicatePolicy: "skip-completed"` skips completed processed event records.
 - Keep action side effects explicit.
 - Require host-registered flow and action definitions before tick.
 - Do not automatically delete stale waiting index entries.
@@ -186,7 +186,7 @@ The explicit tick helper needs a separate policy. Options:
 
 Current implementation: `tickRecoveredRuns` does not modify processed event records. Keeping preview recovery and execution recovery separate avoids overloading `ProcessedEventRecord`.
 
-See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the skip-completed policy design. `tickRecoveredRuns` does not read processed event records and does not perform duplicate skip. Duplicate skip and exactly-once behavior remain unimplemented.
+See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the explicit `skip-completed` policy. Duplicate skip belongs to `recoverWaitingRuns`, not `tickRecoveredRuns`. `tickRecoveredRuns` does not read processed event records and does not perform duplicate skip. Exactly-once behavior remains unimplemented.
 
 ## 11. Error Handling
 
@@ -249,7 +249,7 @@ Implemented tests currently cover:
 Future tests should cover:
 
 - More complex waiting index transitions after successful tick.
-- Duplicate event skip policy once implemented.
+- Retry-failed and stale-started duplicate policies once designed.
 - Future trigger-path event handling once designed.
 
 ## 15. Open Questions

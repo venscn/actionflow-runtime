@@ -4,7 +4,7 @@
 
 ActionRun can currently enter `waiting` status. Runtime can write waiting ActionRuns into a waiting index, and both MemoryStateStore and FileStateStore can query that index.
 
-The runtime now has event recovery helpers: `matchWaitingRuns(event)` can match an external event name to waiting index entries, `previewEventRecovery(event)` can preview stored FlowRun records for matched entries, and `recoverWaitingRuns(event)` currently returns match/preview-only recovery results while recording observe-only processed event attempts when supported. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
+The runtime now has event recovery helpers: `matchWaitingRuns(event)` can match an external event name to waiting index entries, `previewEventRecovery(event)` can preview stored FlowRun records for matched entries, and `recoverWaitingRuns(event)` currently returns match/preview-only recovery results while recording observe-by-default processed event attempts when supported. `recoverWaitingRuns(event, { duplicatePolicy: "skip-completed" })` can explicitly skip completed processed event records. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
 
 `ActionFlowRuntime.restoreRun` can reload run records. `previewEventRecovery` and the current `recoverWaitingRuns` may call `restoreRun` for preview, but they do not call `tick`. As a result, waiting actions currently require the host to explicitly decide what to do after a preview, and they cannot recover from an event automatically.
 
@@ -122,7 +122,7 @@ The implemented `previewEventRecovery(event)` API queries the waiting index and 
 
 If an entry has no `flowRunId`, preview records a skipped entry. If `restoreRun` fails, preview records a skipped entry with the error message.
 
-The implemented `recoverWaitingRuns(event)` API returns match/preview recovery results only. When `ProcessedEventStore` is available, it records observe-only `started`, `completed`, and `failed` processed event attempts. It does not call `tick`, does not wake actions, does not execute triggers, does not skip duplicate events, and does not implement exactly-once behavior.
+The implemented `recoverWaitingRuns(event)` API returns match/preview recovery results only. When `ProcessedEventStore` is available, it records observe-only `started`, `completed`, and `failed` processed event attempts by default. It also supports explicit `duplicatePolicy: "skip-completed"` for completed processed event records. It does not call `tick`, does not wake actions, does not execute triggers, and does not implement exactly-once behavior.
 
 ## 8. Recovery Strategy Options
 
@@ -178,7 +178,7 @@ Candidate future strategy:
 - Do not claim exactly-once delivery in the first version.
 - Return `matched` and `skipped` records so the API does not pretend recovery succeeded.
 
-See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the skip-completed policy design. These accessors do not imply automatic idempotency. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. `recoverWaitingRuns` writes observe-only processed event attempts when supported, but does not skip duplicate events and does not implement exactly-once behavior.
+See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the explicit `skip-completed` policy. These accessors do not imply automatic idempotency. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. `recoverWaitingRuns` defaults to observe-only behavior and can explicitly skip completed duplicate events, but it does not implement exactly-once behavior.
 
 ## 11. Error Handling
 
@@ -243,7 +243,7 @@ Phase 7:
 
 - Add processed event id store types and MemoryStateStore / FileStateStore implementations. Implemented.
 - Add explicit ActionFlowRuntime processed event accessors. Implemented.
-- Wire observe-only processed event policy into recoverWaitingRuns. Implemented.
+- Wire observe-by-default processed event policy into recoverWaitingRuns. Implemented.
 
 Phase 8:
 
@@ -267,13 +267,13 @@ Implemented tests currently cover:
 - `previewEventRecovery` does not tick, mutate waiting index, or execute triggers.
 - `recoverWaitingRuns` returns match/preview recovery results.
 - `recoverWaitingRuns` skips missing `flowRunId` and missing FlowRun records.
-- `recoverWaitingRuns` writes observe-only `started`, `completed`, and `failed` processed event records when supported.
-- `recoverWaitingRuns` does not tick, mutate waiting index, execute triggers, skip duplicate events, or provide exactly-once behavior.
+- `recoverWaitingRuns` writes observe-by-default `started`, `completed`, and `failed` processed event records when supported.
+- `recoverWaitingRuns` supports explicit `duplicatePolicy: "skip-completed"` for completed processed event records.
+- `recoverWaitingRuns` does not tick, mutate waiting index, execute triggers, or provide exactly-once behavior.
 - `recoverWaitingRuns` validates runtime events and surfaces waiting index errors.
 - `tickRecoveredRuns` explicitly ticks recovered runs when called by the host.
 - `tickRecoveredRuns` supports `dryRun`, `maxRuns`, and `continueOnError`.
 - `tickRecoveredRuns` does not execute triggers or write processed event records.
-- Duplicate event skip policy is documented in [Duplicate Event Skip Policy](duplicate-event-skip-policy.md), but not implemented.
 
 Remaining future tests should cover:
 
@@ -281,7 +281,7 @@ Remaining future tests should cover:
 - Stale waiting index entry is reported.
 - Corrupted waiting index surfaces an error.
 - More complex explicit tick recovery behavior.
-- Duplicate event skip behavior once implemented.
+- Retry-failed and stale-started duplicate policies once designed.
 
 ## 16. Open Questions
 

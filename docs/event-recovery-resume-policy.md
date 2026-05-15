@@ -2,7 +2,7 @@
 
 ## 1. Problem
 
-`matchWaitingRuns` can find waiting entries. `previewEventRecovery` can restore FlowRun records for preview. `recoverWaitingRuns` currently returns match/preview-only recovery results and records observe-only processed event attempts when supported.
+`matchWaitingRuns` can find waiting entries. `previewEventRecovery` can restore FlowRun records for preview. `recoverWaitingRuns` currently returns match/preview-only recovery results and records observe-by-default processed event attempts when supported. `recoverWaitingRuns(event, { duplicatePolicy: "skip-completed" })` can explicitly skip completed processed event records.
 
 Real recovery still needs policy decisions: whether to tick, when to tick, which runs to tick, and how to handle errors. If runtime automatically ticks after every event, it may repeat execution, run without registered actions or flows, or resume the wrong run for a loosely matched event.
 
@@ -17,6 +17,7 @@ Current implemented capabilities:
 - `previewEventRecovery(event)` restores matching FlowRun records for preview.
 - `recoverWaitingRuns(event)` follows preview-only behavior.
 - `recoverWaitingRuns(event)` records processed event attempts when `ProcessedEventStore` is available.
+- `recoverWaitingRuns(event, { duplicatePolicy: "skip-completed" })` explicitly skips completed processed event records.
 - `tickRecoveredRuns(result, options)` is an explicit helper for ticking recovered runs.
 - `previewEventRecovery` does not tick.
 - `recoverWaitingRuns` does not tick.
@@ -61,7 +62,7 @@ Current behavior:
 
 - Match entries.
 - Restore FlowRun preview.
-- Record observe-only processed event attempts when supported.
+- Record observe-by-default processed event attempts when supported.
 - Do not tick.
 - `recoverWaitingRuns(event)` follows this no-tick behavior today.
 - Host decides the next action.
@@ -187,7 +188,7 @@ Rules:
 - `dryRun` is equivalent to preview.
 - `flowId` can default to `restoredRun.flowId`.
 - `flowVersion` needs a separate policy.
-- Processed event policy wiring is currently observe-only and does not skip duplicate events.
+- The default duplicate policy is observe-only. `recoverWaitingRuns` also supports explicit `duplicatePolicy: "skip-completed"` for completed processed event records.
 
 ## 8. Safety Rules
 
@@ -216,7 +217,7 @@ Automatic tick needs at least:
 - Side-effect policy.
 - Persistence transaction strategy.
 
-See [Processed Event ID Design](processed-event-id-design.md) for the processed event id model and current observe-only runtime wiring. See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the skip-completed policy design. Duplicate event skip behavior, exactly-once behavior, automatic wakeup, and durable recovery are not implemented.
+See [Processed Event ID Design](processed-event-id-design.md) for the processed event id model and current observe-by-default runtime wiring. See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the implemented explicit `skip-completed` policy. Exactly-once behavior, automatic wakeup, and durable recovery are not implemented.
 
 `tickRecoveredRuns` does not consult `ProcessedEventStore` and does not perform duplicate skip.
 
@@ -282,7 +283,7 @@ Future tests should cover:
 ## 14. Open Questions
 
 - Should a future `recoverAndTick` API be added, or is `tickRecoveredRuns` enough?
-- Should duplicate event skip policy be implemented next?
+- Should retry-failed or stale-started duplicate policies be implemented next?
 - Is a recovery attempt record needed?
 - Should `maxRuns` have a default limit?
 - Where should `flowVersion` come from?

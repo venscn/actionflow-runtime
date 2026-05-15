@@ -32,13 +32,14 @@ Current implemented pieces:
 - Explicit Tick Recovery design.
 - Explicit tick recovery helper.
 - Duplicate Event Skip Policy design.
+- Duplicate event skip-completed policy.
 - Processed Event ID design.
 - Processed Event ID store types.
 - MemoryStateStore processed event id.
 - FileStateStore processed event id.
 - Runtime explicit processed event accessors.
 - `recoverWaitingRuns` match/preview-only API.
-- Observe-only processed event policy wiring for `recoverWaitingRuns`.
+- Observe-by-default processed event policy wiring for `recoverWaitingRuns`.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -49,7 +50,8 @@ The following are not implemented:
 
 - Durable recovery guarantee.
 - Waiting action wakeup.
-- Duplicate event skip implementation / exactly-once behavior.
+- Retry-failed / stale-started duplicate policies.
+- Exactly-once behavior.
 - Event trigger execution.
 - FlowDefinition persistence.
 - EventTriggerDefinition persistence.
@@ -108,8 +110,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Duplicate event skip implementation.
-- Phase B: Stale waiting index health checks.
+- Phase A: Stale waiting index health checks.
+- Phase B: Trigger start-flow design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -117,7 +119,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Duplicate event skip implementation.
 - Stale waiting index health checks.
+- Trigger start-flow design.
 
-Recommendation: start with duplicate event skip implementation. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and `tickRecoveredRuns` now provides an explicit host-called tick helper, but automatic wakeup, duplicate event skip / exactly-once behavior, and durable recovery are still not implemented.
+Recommendation: start with stale waiting index health checks. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and `recoverWaitingRuns` now supports explicit `skip-completed` duplicate policy, but automatic wakeup, exactly-once behavior, event trigger execution, and durable recovery are still not implemented.

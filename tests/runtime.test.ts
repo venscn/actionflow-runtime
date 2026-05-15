@@ -19,6 +19,7 @@ import type {
   FlowDefinition,
   FlowEngineRunRecord,
   ProcessedEventRecord,
+  RecoverWaitingRunsOptions,
   StateStoreRunBatch
 } from "../src/index.js";
 
@@ -866,6 +867,183 @@ describe("ActionFlowRuntime", () => {
         attemptCount: 8
       })
     );
+  });
+
+  it("recoverWaitingRuns default observe still processes duplicate completed event", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.saveProcessedEvent({
+      ...createProcessedEventRecord("completed", "event-1"),
+      attemptCount: 1
+    });
+
+    const result = runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(result.eventSkipped).toBeUndefined();
+    expect(runtime.getProcessedEvent("event-1")).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        attemptCount: 2
+      })
+    );
+  });
+
+  it("recoverWaitingRuns skip-completed returns eventSkipped for completed existing event", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.saveProcessedEvent(createProcessedEventRecord("completed", "event-1"));
+
+    const result = runtime.recoverWaitingRuns(
+      { id: "event-1", name: "user.created" },
+      { duplicatePolicy: "skip-completed" }
+    );
+
+    expect(result).toEqual({
+      eventId: "event-1",
+      matched: [],
+      recovered: [],
+      skipped: [],
+      eventSkipped: {
+        eventId: "event-1",
+        reason: "Duplicate event already completed",
+        existingStatus: "completed"
+      }
+    });
+  });
+
+  it("recoverWaitingRuns skip-completed does not mutate completed processed event record", () => {
+    const runtime = new ActionFlowRuntime();
+    const record = {
+      ...createProcessedEventRecord("completed", "event-1"),
+      firstSeenAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      attemptCount: 1
+    };
+
+    runtime.saveProcessedEvent(record);
+    runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" }, { duplicatePolicy: "skip-completed" });
+
+    expect(runtime.getProcessedEvent("event-1")).toEqual(record);
+  });
+
+  it("recoverWaitingRuns skip-completed does not call preview", () => {
+    const error = new Error("waiting index list failed");
+    const store = new FailingWaitingListStore(error);
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.saveProcessedEvent(createProcessedEventRecord("completed", "event-1"));
+
+    const result = runtime.recoverWaitingRuns(
+      { id: "event-1", name: "user.created" },
+      { duplicatePolicy: "skip-completed" }
+    );
+
+    expect(result.eventSkipped).toEqual({
+      eventId: "event-1",
+      reason: "Duplicate event already completed",
+      existingStatus: "completed"
+    });
+  });
+
+  it("recoverWaitingRuns skip-completed does not tick", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.saveProcessedEvent(createProcessedEventRecord("completed", "event-1"));
+    store.saveFlowRun(createRecoveredRun("flow-run-1", "flow.basic"));
+    const flowRunCount = store.listFlowRuns().length;
+    const actionRunCount = store.listActionRuns().length;
+
+    runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" }, { duplicatePolicy: "skip-completed" });
+
+    expect(store.listFlowRuns()).toHaveLength(flowRunCount);
+    expect(store.listActionRuns()).toHaveLength(actionRunCount);
+  });
+
+  it("recoverWaitingRuns skip-completed does not execute EventTriggerRegistry", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.saveProcessedEvent(createProcessedEventRecord("completed", "event-1"));
+    runtime.registerTrigger({
+      id: "trigger.user-created",
+      event: "user.created",
+      flow: "flow.user-created"
+    });
+
+    runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" }, { duplicatePolicy: "skip-completed" });
+
+    expect(runtime.triggers.has("trigger.user-created")).toBe(true);
+    expect(runtime.store.listFlowRuns()).toEqual([]);
+  });
+
+  it("recoverWaitingRuns skip-completed does not skip failed existing event", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.saveProcessedEvent(createProcessedEventRecord("failed", "event-1"));
+
+    const result = runtime.recoverWaitingRuns(
+      { id: "event-1", name: "user.created" },
+      { duplicatePolicy: "skip-completed" }
+    );
+
+    expect(result.eventSkipped).toBeUndefined();
+    expect(runtime.getProcessedEvent("event-1")).toEqual(expect.objectContaining({ status: "completed" }));
+  });
+
+  it("recoverWaitingRuns skip-completed does not skip started existing event", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.saveProcessedEvent(createProcessedEventRecord("started", "event-1"));
+
+    const result = runtime.recoverWaitingRuns(
+      { id: "event-1", name: "user.created" },
+      { duplicatePolicy: "skip-completed" }
+    );
+
+    expect(result.eventSkipped).toBeUndefined();
+    expect(runtime.getProcessedEvent("event-1")).toEqual(expect.objectContaining({ status: "completed" }));
+  });
+
+  it("recoverWaitingRuns skip-completed falls back to observe when store lacks ProcessedEventStore", () => {
+    const runtime = new ActionFlowRuntime({ stateStore: new RecordingFallbackStateStore() });
+
+    expect(runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" }, { duplicatePolicy: "skip-completed" })).toEqual({
+      eventId: "event-1",
+      matched: [],
+      recovered: [],
+      skipped: []
+    });
+  });
+
+  it("recoverWaitingRuns invalid duplicatePolicy throws", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(() =>
+      runtime.recoverWaitingRuns(
+        { id: "event-1", name: "user.created" },
+        { duplicatePolicy: "bad" } as unknown as RecoverWaitingRunsOptions
+      )
+    ).toThrow("Invalid duplicate event policy");
+  });
+
+  it("tickRecoveredRuns ignores eventSkipped with empty recovered result safely", async () => {
+    const runtime = new ActionFlowRuntime();
+    const result: EventRecoveryResult = {
+      eventId: "event-1",
+      matched: [],
+      recovered: [],
+      skipped: [],
+      eventSkipped: {
+        eventId: "event-1",
+        reason: "Duplicate event already completed",
+        existingStatus: "completed"
+      }
+    };
+
+    await expect(runtime.tickRecoveredRuns(result)).resolves.toEqual({
+      ...result,
+      runResults: []
+    });
   });
 
   it("tickRecoveredRuns dryRun returns previewed and does not tick", async () => {

@@ -33,11 +33,24 @@ export interface EventRecoverySkip {
   reason: string;
 }
 
+export type DuplicateEventPolicy = "observe" | "skip-completed";
+
+export interface RecoverWaitingRunsOptions {
+  duplicatePolicy?: DuplicateEventPolicy;
+}
+
+export interface EventRecoveryDuplicateSkip {
+  eventId: string;
+  reason: string;
+  existingStatus: ProcessedEventRecord["status"];
+}
+
 export interface EventRecoveryResult {
   eventId: string;
   matched: readonly WaitingRunIndexEntry[];
   recovered: readonly FlowEngineRunRecord[];
   skipped: readonly EventRecoverySkip[];
+  eventSkipped?: EventRecoveryDuplicateSkip;
 }
 
 export interface TickRecoveredRunsOptions {
@@ -198,14 +211,34 @@ export class ActionFlowRuntime {
     };
   }
 
-  recoverWaitingRuns(event: RuntimeEvent): EventRecoveryResult {
+  recoverWaitingRuns(event: RuntimeEvent, options: RecoverWaitingRunsOptions = {}): EventRecoveryResult {
     validateRuntimeEvent(event);
+    const duplicatePolicy = options.duplicatePolicy ?? "observe";
+
+    if (duplicatePolicy !== "observe" && duplicatePolicy !== "skip-completed") {
+      throw new Error("Invalid duplicate event policy");
+    }
 
     if (!supportsProcessedEvents(this.store)) {
       return this.previewEventRecovery(event);
     }
 
     const existingRecord = this.store.getProcessedEvent(event.id);
+
+    if (duplicatePolicy === "skip-completed" && existingRecord?.status === "completed") {
+      return {
+        eventId: event.id,
+        matched: [],
+        recovered: [],
+        skipped: [],
+        eventSkipped: {
+          eventId: event.id,
+          reason: "Duplicate event already completed",
+          existingStatus: "completed"
+        }
+      };
+    }
+
     const firstSeenAt = existingRecord?.firstSeenAt ?? new Date().toISOString();
     const attemptCount = (existingRecord?.attemptCount ?? 0) + 1;
 
@@ -340,10 +373,7 @@ export class ActionFlowRuntime {
     }
 
     return {
-      eventId: result.eventId,
-      matched: result.matched,
-      recovered: result.recovered,
-      skipped: result.skipped,
+      ...result,
       runResults
     };
   }

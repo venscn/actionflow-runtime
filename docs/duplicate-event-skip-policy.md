@@ -4,7 +4,7 @@
 
 `RuntimeEvent` has an `id`.
 
-`recoverWaitingRuns(event)` currently writes observe-only `started`, `completed`, and `failed` processed event records. It does not skip when the same `eventId` already has a completed record.
+`recoverWaitingRuns(event)` writes observe-by-default `started`, `completed`, and `failed` processed event records. It skips an existing completed processed event record only when `duplicatePolicy: "skip-completed"` is explicitly provided.
 
 If explicit tick recovery is repeated for the same event, the runtime may repeat ticks or duplicate side effects. A duplicate event policy is needed, but it must not be described as exactly-once behavior.
 
@@ -12,8 +12,8 @@ If explicit tick recovery is repeated for the same event, the runtime may repeat
 
 - `matchWaitingRuns(event)` does not write processed event records.
 - `previewEventRecovery(event)` does not write processed event records.
-- `recoverWaitingRuns(event)` writes observe-only processed event attempts.
-- `recoverWaitingRuns(event)` does not skip duplicate completed events.
+- `recoverWaitingRuns(event)` writes observe-by-default processed event attempts.
+- `recoverWaitingRuns(event)` defaults to observe behavior and does not skip duplicate completed events unless `duplicatePolicy: "skip-completed"` is explicitly provided.
 - `tickRecoveredRuns(result, options)` does not write processed event records.
 - `tickRecoveredRuns` runs only when the host explicitly calls it.
 - Exactly-once behavior is not implemented.
@@ -45,7 +45,7 @@ If explicit tick recovery is repeated for the same event, the runtime may repeat
 
 ### Policy A: observe-only
 
-Current behavior:
+Default behavior:
 
 - Every event records an attempt.
 - Completed events are not skipped.
@@ -54,7 +54,7 @@ Current behavior:
 
 ### Policy B: skip-completed
 
-Candidate behavior:
+Implemented behavior:
 
 - If `ProcessedEventRecord.status === "completed"`, skip this recovery attempt.
 - Do not run preview.
@@ -78,7 +78,7 @@ Candidate behavior:
 - Old `started` records are treated as stale and may be retried or marked failed.
 - Requires clock and threshold policy.
 
-Recommended first implementation:
+Implemented first version:
 
 - Keep Policy A as the default.
 - Add Policy B as an explicit option.
@@ -86,7 +86,7 @@ Recommended first implementation:
 
 ## 6. Proposed API Shape
 
-Candidate types, not implemented:
+Implemented types:
 
 ```ts
 type DuplicateEventPolicy = "observe" | "skip-completed";
@@ -149,7 +149,7 @@ This is not recommended because `EventRecoverySkip` is run-level. Using an event
 
 This is not recommended because callers cannot distinguish no match from duplicate skip.
 
-Recommended first implementation: Option A.
+Implemented first version: Option A.
 
 ## 8. Processed Event Record Behavior
 
@@ -170,11 +170,11 @@ Candidate behavior for `skip-completed`:
 
 - Requires extending `ProcessedEventRecord`.
 
-Recommended first implementation: Strategy A. Do not mutate completed records on skip.
+Implemented first version: Strategy A. `skip-completed` does not mutate completed records.
 
 ## 9. Runtime Flow
 
-Candidate `skip-completed` flow:
+Implemented `skip-completed` flow:
 
 1. Validate `RuntimeEvent`.
 2. If `duplicatePolicy === "skip-completed"` and store supports `ProcessedEventStore`:
@@ -192,7 +192,7 @@ Duplicate skip belongs to `recoverWaitingRuns`, not `tickRecoveredRuns`.
 
 `tickRecoveredRuns` processes an `EventRecoveryResult` explicitly passed by the host. It should not consult `ProcessedEventStore` and should not implement exactly-once behavior.
 
-If a future result has `eventSkipped`, `tickRecoveredRuns` should safely return empty `runResults` or process empty `recovered` data.
+If a result has `eventSkipped` and empty `recovered`, `tickRecoveredRuns` safely returns empty `runResults` and preserves `eventSkipped` in the returned result.
 
 ## 11. Error Handling
 
@@ -216,19 +216,27 @@ If a future result has `eventSkipped`, `tickRecoveredRuns` should safely return 
 - Do not guarantee external side-effect idempotency.
 - Durable recovery is not implemented.
 
-## 13. Tests Needed If Implemented
+## 13. Tests
+
+Implemented tests currently cover:
 
 - Default `recoverWaitingRuns` still observes duplicate completed events.
 - `skip-completed` returns `eventSkipped` for completed existing event.
 - `skip-completed` does not call preview on completed existing event.
-- `skip-completed` does not write a new processed event record.
+- `skip-completed` does not mutate the completed processed event record.
 - `skip-completed` does not tick.
 - `skip-completed` does not execute trigger.
 - `skip-completed` does not affect failed existing event.
 - `skip-completed` does not affect started existing event.
 - Store without `ProcessedEventStore` falls back to observe behavior.
 - Invalid `duplicatePolicy` throws.
-- `tickRecoveredRuns` ignores `eventSkipped` or empty recovered result safely.
+- `tickRecoveredRuns` handles `eventSkipped` with empty recovered result safely.
+
+Future tests should cover:
+
+- Retry-failed policy once designed.
+- Stale-started policy once designed.
+- Concurrent duplicate event behavior in a production store design.
 - Exactly-once is not claimed.
 
 ## 14. Open Questions
