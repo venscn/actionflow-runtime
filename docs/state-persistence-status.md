@@ -90,8 +90,9 @@ Known risks:
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
 - Phase A: rollback design evaluation.
-- Phase B: waiting index design.
-- Phase C: event recovery design.
+- Phase B: health report improvements.
+- Phase C: waiting index design.
+- Phase D: event recovery design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -99,7 +100,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- FileStateStore rollback design evaluation.
+- Health report improvements.
 - Waiting index design.
 
-Recommendation: start with FileStateStore rollback design evaluation before adding more storage backends. Batch marker inspection can now summarize marker state, but it still cannot repair or reverse partial writes.
+Recommendation: start with health report improvements. Rollback has been evaluated as a risky future direction, and batch marker inspection can summarize marker state, but it still cannot repair or reverse partial writes.

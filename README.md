@@ -90,6 +90,7 @@ npm run example:file-store-resume
 - [FileStateStore MVP Plan](docs/file-state-store-plan.md)
 - [StateStore Batch Save Design](docs/state-store-batch-save-design.md)
 - [FileStateStore Staging Design](docs/file-state-store-staging-design.md)
+- [FileStateStore Rollback Evaluation](docs/file-state-store-rollback-evaluation.md)
 
 ## Facade Example
 
