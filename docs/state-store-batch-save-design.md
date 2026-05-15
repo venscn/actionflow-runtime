@@ -55,7 +55,7 @@ This should be an optional extension to `StateStore`, not an immediate required 
 
 ## 5. Runtime Integration
 
-Future `ActionFlowRuntime.tick` integration can be:
+`ActionFlowRuntime.tick` integration now follows this path:
 
 1. `FlowEngine.tick` returns `nextRun`.
 2. Runtime builds a batch:
@@ -100,15 +100,19 @@ Rollback behavior is store-specific:
 
 ## 9. Tests Needed
 
-Future implementation tests should cover:
+Implemented tests currently cover:
 
 - Runtime uses `saveRunBatch` when the store supports it.
 - Runtime falls back when the store does not support it.
 - `MemoryStateStore` batch saves FlowRun and ActionRun records.
 - `FileStateStore` batch writes ActionRun / FlowRun records.
-- `FileStateStore` batch failure surfaces an error.
 - `restoreRun` after batch save works.
+
+Remaining future tests may cover:
+
+- `FileStateStore` batch failure surfaces an error.
 - No duplicate ActionRuns after restore.
+- Staging / commit marker behavior once implemented.
 
 ## 10. Implementation Plan
 
@@ -130,6 +134,7 @@ Status: implemented. FileStateStore writes the FlowRun first, then ActionRuns in
 Phase 3:
 
 - Design FileStateStore staging / commit marker behavior.
+- See [FileStateStore Staging Design](file-state-store-staging-design.md) for the proposed staging / commit marker design.
 
 Status: not implemented.
 

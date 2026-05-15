@@ -89,6 +89,7 @@ npm run example:file-store-resume
 - [State Persistence Design](docs/state-persistence-design.md)
 - [FileStateStore MVP Plan](docs/file-state-store-plan.md)
 - [StateStore Batch Save Design](docs/state-store-batch-save-design.md)
+- [FileStateStore Staging Design](docs/file-state-store-staging-design.md)
 
 ## Facade Example
 
