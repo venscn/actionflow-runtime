@@ -35,6 +35,7 @@ Current implemented pieces:
 - FileStateStore processed event id.
 - Runtime explicit processed event accessors.
 - `recoverWaitingRuns` match/preview-only API.
+- Observe-only processed event policy wiring for `recoverWaitingRuns`.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -46,8 +47,7 @@ The following are not implemented:
 - Durable recovery guarantee.
 - Explicit tick recovery.
 - Waiting action wakeup.
-- Processed event policy wiring.
-- Exactly-once behavior.
+- Duplicate event skip / exactly-once behavior.
 - Event trigger execution.
 - FlowDefinition persistence.
 - EventTriggerDefinition persistence.
@@ -106,8 +106,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Processed event policy wiring for `recoverWaitingRuns`.
-- Phase B: Explicit tick recovery design / implementation.
+- Phase A: Explicit tick recovery design / implementation.
+- Phase B: Duplicate event skip policy.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -115,7 +115,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Processed event policy wiring for `recoverWaitingRuns`.
 - Explicit tick recovery design / implementation.
+- Duplicate event skip policy.
 
-Recommendation: start with processed event policy wiring for `recoverWaitingRuns`. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and `recoverWaitingRuns` now provides match/preview-only results, but processed event policy wiring, automatic wakeup, exactly-once behavior, and durable recovery are still not implemented.
+Recommendation: start with explicit tick recovery design. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and `recoverWaitingRuns` now provides match/preview-only results with observe-only processed event records, but explicit tick recovery, automatic wakeup, duplicate event skip / exactly-once behavior, and durable recovery are still not implemented.

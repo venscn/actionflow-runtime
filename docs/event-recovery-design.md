@@ -4,7 +4,7 @@
 
 ActionRun can currently enter `waiting` status. Runtime can write waiting ActionRuns into a waiting index, and both MemoryStateStore and FileStateStore can query that index.
 
-The runtime now has read-only event recovery helpers: `matchWaitingRuns(event)` can match an external event name to waiting index entries, `previewEventRecovery(event)` can preview stored FlowRun records for matched entries, and `recoverWaitingRuns(event)` currently returns the same match/preview-only recovery result. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
+The runtime now has event recovery helpers: `matchWaitingRuns(event)` can match an external event name to waiting index entries, `previewEventRecovery(event)` can preview stored FlowRun records for matched entries, and `recoverWaitingRuns(event)` currently returns match/preview-only recovery results while recording observe-only processed event attempts when supported. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
 
 `ActionFlowRuntime.restoreRun` can reload run records. `previewEventRecovery` and the current `recoverWaitingRuns` may call `restoreRun` for preview, but they do not call `tick`. As a result, waiting actions currently require the host to explicitly decide what to do after a preview, and they cannot recover from an event automatically.
 
@@ -121,7 +121,7 @@ The implemented `previewEventRecovery(event)` API queries the waiting index and 
 
 If an entry has no `flowRunId`, preview records a skipped entry. If `restoreRun` fails, preview records a skipped entry with the error message.
 
-The implemented `recoverWaitingRuns(event)` API currently delegates to `previewEventRecovery(event)`. It returns match/preview recovery results only. It does not call `tick`, does not wake actions, does not execute triggers, does not write processed event records, does not read processed event records as a skip policy, and does not implement exactly-once behavior.
+The implemented `recoverWaitingRuns(event)` API returns match/preview recovery results only. When `ProcessedEventStore` is available, it records observe-only `started`, `completed`, and `failed` processed event attempts. It does not call `tick`, does not wake actions, does not execute triggers, does not skip duplicate events, and does not implement exactly-once behavior.
 
 ## 8. Recovery Strategy Options
 
@@ -177,7 +177,7 @@ Candidate future strategy:
 - Do not claim exactly-once delivery in the first version.
 - Return `matched` and `skipped` records so the API does not pretend recovery succeeded.
 
-See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. These accessors do not imply automatic idempotency. `matchWaitingRuns`, `previewEventRecovery`, and the current `recoverWaitingRuns` do not write processed event records, and exactly-once behavior is not implemented.
+See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. These accessors do not imply automatic idempotency. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. `recoverWaitingRuns` writes observe-only processed event attempts when supported, but does not skip duplicate events and does not implement exactly-once behavior.
 
 ## 11. Error Handling
 
@@ -241,7 +241,7 @@ Phase 7:
 
 - Add processed event id store types and MemoryStateStore / FileStateStore implementations. Implemented.
 - Add explicit ActionFlowRuntime processed event accessors. Implemented.
-- Wire processed event policy into recoverWaitingRuns. Not implemented.
+- Wire observe-only processed event policy into recoverWaitingRuns. Implemented.
 
 Phase 8:
 
@@ -265,7 +265,8 @@ Implemented tests currently cover:
 - `previewEventRecovery` does not tick, mutate waiting index, or execute triggers.
 - `recoverWaitingRuns` returns match/preview recovery results.
 - `recoverWaitingRuns` skips missing `flowRunId` and missing FlowRun records.
-- `recoverWaitingRuns` does not tick, mutate waiting index, execute triggers, or write processed event records.
+- `recoverWaitingRuns` writes observe-only `started`, `completed`, and `failed` processed event records when supported.
+- `recoverWaitingRuns` does not tick, mutate waiting index, execute triggers, skip duplicate events, or provide exactly-once behavior.
 - `recoverWaitingRuns` validates runtime events and surfaces waiting index errors.
 
 Remaining future tests should cover:
@@ -274,7 +275,7 @@ Remaining future tests should cover:
 - Stale waiting index entry is reported.
 - Corrupted waiting index surfaces an error.
 - Explicit resume/tick recovery behavior once implemented.
-- Duplicate event id behavior once designed.
+- Duplicate event skip behavior once designed.
 
 ## 16. Open Questions
 

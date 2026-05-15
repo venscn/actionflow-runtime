@@ -4,7 +4,7 @@
 
 Event Recovery will process external `RuntimeEvent` values. `RuntimeEvent` already has an `id`, but the runtime does not currently record which events have been processed.
 
-`matchWaitingRuns`, `previewEventRecovery`, and the current match/preview-only `recoverWaitingRuns` are read-only and do not need processed event id storage. A future processed-event-aware `recoverWaitingRuns` policy or `recoverAndTick` API may execute `tick`, and then repeated events could repeat recovery work.
+`matchWaitingRuns` and `previewEventRecovery` are read-only and do not need processed event id storage. The current match/preview-only `recoverWaitingRuns` writes observe-only processed event attempts when `ProcessedEventStore` is available. A future duplicate-skip policy or `recoverAndTick` API may execute `tick`, and then repeated events could repeat recovery work.
 
 Without processed event id records, the runtime cannot distinguish a first event, a duplicate event, or a retry after failure.
 
@@ -19,7 +19,7 @@ Processed Event ID should:
 - Remain an optional StateStore extension.
 - Avoid claiming exactly-once behavior.
 - Avoid automatically dropping events unless the host explicitly chooses a policy.
-- Leave current `matchWaitingRuns`, `previewEventRecovery`, and match/preview-only `recoverWaitingRuns` behavior unchanged.
+- Leave current `matchWaitingRuns` and `previewEventRecovery` behavior unchanged.
 
 ## 3. Non-Goals
 
@@ -41,10 +41,10 @@ Current implementation:
 - `RuntimeEvent` has `id` and `name`.
 - `matchWaitingRuns(event)` matches by `event.name` / `waitReason`.
 - `previewEventRecovery(event)` restores matched FlowRuns for preview.
-- `recoverWaitingRuns(event)` currently delegates to preview behavior.
+- `recoverWaitingRuns(event)` currently returns preview results and records observe-only processed event attempts when supported.
 - ActionFlowRuntime exposes explicit processed event accessors.
-- These match/preview methods do not mutate event state.
-- These match/preview methods do not record processed ids.
+- `matchWaitingRuns` and `previewEventRecovery` do not mutate event state or record processed ids.
+- `recoverWaitingRuns` records observe-only `started`, `completed`, and `failed` attempts when supported.
 - These match/preview methods do not tick.
 
 ## 5. Proposed Data Model
@@ -90,7 +90,7 @@ interface ProcessedEventStore extends StateStore {
 
 This extension is optional and does not enter the base `StateStore` interface. Runtime can detect support. Stores that do not support it keep current behavior.
 
-Runtime explicit processed event store accessors are implemented. `matchWaitingRuns`, `previewEventRecovery`, and the current match/preview-only `recoverWaitingRuns` do not write processed event records. Processed event policy wiring remains future work. Exactly-once behavior is not implemented. Durable recovery is not implemented.
+Runtime explicit processed event store accessors are implemented. `recoverWaitingRuns` writes observe-only `started`, `completed`, and `failed` records when `ProcessedEventStore` is available. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. Duplicate event skip policy remains future work. Exactly-once behavior is not implemented. Durable recovery is not implemented.
 
 MemoryStateStore uses in-memory records. FileStateStore writes local JSON records under `processed-events/{safeEventId}.json`.
 
@@ -137,7 +137,7 @@ Important limits:
 
 Recommendation:
 
-- First implementation should support Observe only or configurable Skip completed.
+- Current implementation supports Observe only.
 - Default behavior should not silently discard events.
 - Exactly-once must not be claimed.
 
@@ -150,19 +150,24 @@ Current Runtime integration exposes explicit processed event accessors when the 
 - `listProcessedEvents()`
 - `deleteProcessedEvent(eventId)`
 
-These accessors do not imply automatic idempotency. They do not change `matchWaitingRuns`, `previewEventRecovery`, or the current match/preview-only `recoverWaitingRuns`.
+These accessors do not imply automatic idempotency. They do not change `matchWaitingRuns` or `previewEventRecovery`.
 
-A future processed-event-aware `recoverWaitingRuns` policy can:
+Current `recoverWaitingRuns` observe-only wiring:
 
 1. Validate `RuntimeEvent`.
 2. Check processed event store if supported.
 3. Create or update `ProcessedEventRecord` with `status: "started"`.
-4. Match waiting runs.
-5. Preview or tick depending on policy.
-6. Save `completed` or `failed` record.
-7. Return `EventRecoveryResult` with skip reasons.
+4. Match waiting runs and preview recovery records.
+5. Save `completed` or `failed` record.
 
-Current `matchWaitingRuns`, `previewEventRecovery`, and match/preview-only `recoverWaitingRuns` do not write processed event records. Processed event id records should be used for future recovery attempts, not pure read-only matching.
+A future duplicate-skip or tick policy can:
+
+1. Read processed event records before recovery.
+2. Decide whether to skip, retry, or tick.
+3. Save per-policy results.
+4. Return `EventRecoveryResult` with skip reasons.
+
+Current `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. Current `recoverWaitingRuns` writes observe-only records and does not skip duplicate completed events. Exactly-once remains unimplemented.
 
 ## 10. FileStateStore Layout
 
@@ -252,12 +257,17 @@ Implemented tests currently cover:
 - supportsProcessedEvents detects FileStateStore.
 - Runtime explicit processed event accessors.
 - Runtime processed event accessors do not affect matchWaitingRuns or previewEventRecovery.
+- recoverWaitingRuns records started and completed processed event attempts.
+- recoverWaitingRuns records failed processed event attempts.
+- recoverWaitingRuns increments attemptCount for repeated event ids.
+- recoverWaitingRuns preserves firstSeenAt for repeated event ids.
+- recoverWaitingRuns does not skip duplicate completed events.
 
 Remaining future tests should cover:
 
-- recoverWaitingRuns records started / completed.
-- Failed recovery records failed.
-- Duplicate completed event behavior follows the selected policy.
+- Duplicate completed event skip behavior follows the selected policy.
+- Explicit tick recovery records per-run results once implemented.
+- EventTriggerRegistry event handling records trigger-path results once designed.
 
 ## 16. Open Questions
 

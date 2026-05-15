@@ -179,7 +179,57 @@ export class ActionFlowRuntime {
   }
 
   recoverWaitingRuns(event: RuntimeEvent): EventRecoveryResult {
-    return this.previewEventRecovery(event);
+    validateRuntimeEvent(event);
+
+    if (!supportsProcessedEvents(this.store)) {
+      return this.previewEventRecovery(event);
+    }
+
+    const existingRecord = this.store.getProcessedEvent(event.id);
+    const firstSeenAt = existingRecord?.firstSeenAt ?? new Date().toISOString();
+    const attemptCount = (existingRecord?.attemptCount ?? 0) + 1;
+
+    this.store.saveProcessedEvent(
+      createProcessedEventRecord({
+        event,
+        status: "started",
+        firstSeenAt,
+        attemptCount,
+        matchedRunIds: [],
+        recoveredFlowRunIds: []
+      })
+    );
+
+    try {
+      const result = this.previewEventRecovery(event);
+
+      this.store.saveProcessedEvent(
+        createProcessedEventRecord({
+          event,
+          status: "completed",
+          firstSeenAt,
+          attemptCount,
+          matchedRunIds: result.matched.map((entry) => entry.runId),
+          recoveredFlowRunIds: result.recovered.map((run) => run.id)
+        })
+      );
+
+      return result;
+    } catch (error) {
+      this.store.saveProcessedEvent(
+        createProcessedEventRecord({
+          event,
+          status: "failed",
+          firstSeenAt,
+          attemptCount,
+          matchedRunIds: [],
+          recoveredFlowRunIds: [],
+          error: describeError(error)
+        })
+      );
+
+      throw error;
+    }
   }
 
   createRun(flowId: string, runId: string, version?: string): FlowEngineRunRecord {
@@ -292,6 +342,33 @@ function cloneRecord<T>(value: unknown): Record<string, T> {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function createProcessedEventRecord(params: {
+  event: RuntimeEvent;
+  status: ProcessedEventRecord["status"];
+  firstSeenAt: string;
+  attemptCount: number;
+  matchedRunIds: string[];
+  recoveredFlowRunIds: string[];
+  error?: string;
+}): ProcessedEventRecord {
+  const record: ProcessedEventRecord = {
+    eventId: params.event.id,
+    eventName: params.event.name,
+    status: params.status,
+    firstSeenAt: params.firstSeenAt,
+    updatedAt: new Date().toISOString(),
+    attemptCount: params.attemptCount,
+    matchedRunIds: params.matchedRunIds,
+    recoveredFlowRunIds: params.recoveredFlowRunIds
+  };
+
+  if (params.error !== undefined) {
+    record.error = params.error;
+  }
+
+  return record;
 }
 
 function validateRuntimeEvent(event: RuntimeEvent): void {

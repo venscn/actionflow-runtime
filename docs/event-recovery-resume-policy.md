@@ -2,7 +2,7 @@
 
 ## 1. Problem
 
-`matchWaitingRuns` can find waiting entries. `previewEventRecovery` can restore FlowRun records for preview. `recoverWaitingRuns` currently returns the same match/preview-only recovery result.
+`matchWaitingRuns` can find waiting entries. `previewEventRecovery` can restore FlowRun records for preview. `recoverWaitingRuns` currently returns match/preview-only recovery results and records observe-only processed event attempts when supported.
 
 Real recovery still needs policy decisions: whether to tick, when to tick, which runs to tick, and how to handle errors. If runtime automatically ticks after every event, it may repeat execution, run without registered actions or flows, or resume the wrong run for a loosely matched event.
 
@@ -16,6 +16,7 @@ Current implemented capabilities:
 - `matchWaitingRuns(event)` returns matched entries only.
 - `previewEventRecovery(event)` restores matching FlowRun records for preview.
 - `recoverWaitingRuns(event)` follows preview-only behavior.
+- `recoverWaitingRuns(event)` records processed event attempts when `ProcessedEventStore` is available.
 - `previewEventRecovery` does not tick.
 - `recoverWaitingRuns` does not tick.
 - `previewEventRecovery` does not mutate waiting index.
@@ -58,6 +59,7 @@ Current behavior:
 
 - Match entries.
 - Restore FlowRun preview.
+- Record observe-only processed event attempts when supported.
 - Do not tick.
 - `recoverWaitingRuns(event)` follows this no-tick behavior today.
 - Host decides the next action.
@@ -181,7 +183,7 @@ Rules:
 - `dryRun` is equivalent to preview.
 - `flowId` can default to `restoredRun.flowId`.
 - `flowVersion` needs a separate policy.
-- Processed event policy wiring is not implemented.
+- Processed event policy wiring is currently observe-only and does not skip duplicate events.
 
 ## 8. Safety Rules
 
@@ -210,7 +212,7 @@ Automatic tick needs at least:
 - Side-effect policy.
 - Persistence transaction strategy.
 
-See [Processed Event ID Design](processed-event-id-design.md) for the proposed processed event id index. It is documented, not implemented.
+See [Processed Event ID Design](processed-event-id-design.md) for the processed event id model and current observe-only runtime wiring. Duplicate event skip policy, exactly-once behavior, explicit tick recovery, and durable recovery are not implemented.
 
 Without these, automatic wakeup should not be implemented.
 

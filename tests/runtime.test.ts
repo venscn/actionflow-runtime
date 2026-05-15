@@ -711,8 +711,8 @@ describe("ActionFlowRuntime", () => {
     expect(store.listFlowRuns()).toHaveLength(flowRunCount);
   });
 
-  it("recoverWaitingRuns does not write processed event records", () => {
-    const store = new MemoryStateStore();
+  it("recoverWaitingRuns writes started and completed processed event record", () => {
+    const store = new RecordingProcessedEventStore();
     const runtime = new ActionFlowRuntime({ stateStore: store });
 
     store.saveFlowRun({
@@ -724,7 +724,83 @@ describe("ActionFlowRuntime", () => {
 
     runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" });
 
-    expect(runtime.listProcessedEvents()).toEqual([]);
+    expect(store.savedProcessedEvents.map((record) => record.status)).toEqual(["started", "completed"]);
+    expect(runtime.getProcessedEvent("event-1")).toEqual(
+      expect.objectContaining({
+        eventId: "event-1",
+        eventName: "user.created",
+        status: "completed",
+        attemptCount: 1,
+        matchedRunIds: ["flow-run-1:node-1"],
+        recoveredFlowRunIds: ["flow-run-1"]
+      })
+    );
+  });
+
+  it("recoverWaitingRuns increments attemptCount on repeated event id", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "waiting"
+    });
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+
+    runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" });
+    runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(runtime.getProcessedEvent("event-1")).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        attemptCount: 2
+      })
+    );
+  });
+
+  it("recoverWaitingRuns preserves firstSeenAt across repeated event id", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+    const firstSeenAt = "2026-01-01T00:00:00.000Z";
+
+    runtime.saveProcessedEvent({
+      ...createProcessedEventRecord("completed", "event-1"),
+      firstSeenAt,
+      updatedAt: firstSeenAt,
+      attemptCount: 3
+    });
+
+    runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(runtime.getProcessedEvent("event-1")).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        firstSeenAt,
+        attemptCount: 4
+      })
+    );
+    expect(runtime.getProcessedEvent("event-1")?.updatedAt).not.toBe(firstSeenAt);
+  });
+
+  it("recoverWaitingRuns writes completed record when no waiting runs match", () => {
+    const runtime = new ActionFlowRuntime();
+
+    const result = runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(result).toEqual({
+      eventId: "event-1",
+      matched: [],
+      recovered: [],
+      skipped: []
+    });
+    expect(runtime.getProcessedEvent("event-1")).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        matchedRunIds: [],
+        recoveredFlowRunIds: []
+      })
+    );
   });
 
   it("recoverWaitingRuns returns empty result when store lacks waiting index", () => {
@@ -754,6 +830,41 @@ describe("ActionFlowRuntime", () => {
     const runtime = new ActionFlowRuntime({ stateStore: new FailingWaitingListStore(error) });
 
     expect(() => runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" })).toThrow(error);
+  });
+
+  it("recoverWaitingRuns writes failed record when preview throws", () => {
+    const error = new Error("waiting index list failed");
+    const store = new FailingWaitingListStore(error);
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    expect(() => runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" })).toThrow(error);
+    expect(runtime.getProcessedEvent("event-1")).toEqual(
+      expect.objectContaining({
+        status: "failed",
+        attemptCount: 1,
+        matchedRunIds: [],
+        recoveredFlowRunIds: [],
+        error: "waiting index list failed"
+      })
+    );
+  });
+
+  it("recoverWaitingRuns does not skip duplicate completed events", () => {
+    const runtime = new ActionFlowRuntime();
+
+    runtime.saveProcessedEvent({
+      ...createProcessedEventRecord("completed", "event-1"),
+      attemptCount: 7
+    });
+
+    runtime.recoverWaitingRuns({ id: "event-1", name: "user.created" });
+
+    expect(runtime.getProcessedEvent("event-1")).toEqual(
+      expect.objectContaining({
+        status: "completed",
+        attemptCount: 8
+      })
+    );
   });
 
   it("saves and reads processed events through default MemoryStateStore", () => {
@@ -1455,6 +1566,15 @@ class FailingWaitingListStore extends MemoryStateStore {
 
   override listWaitingActionRuns(): ReturnType<MemoryStateStore["listWaitingActionRuns"]> {
     throw this.error;
+  }
+}
+
+class RecordingProcessedEventStore extends MemoryStateStore {
+  readonly savedProcessedEvents: ProcessedEventRecord[] = [];
+
+  override saveProcessedEvent(record: ProcessedEventRecord): void {
+    this.savedProcessedEvents.push(record);
+    super.saveProcessedEvent(record);
   }
 }
 
