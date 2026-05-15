@@ -216,7 +216,9 @@ Automatic tick needs at least:
 - Side-effect policy.
 - Persistence transaction strategy.
 
-See [Processed Event ID Design](processed-event-id-design.md) for the processed event id model and current observe-only runtime wiring. Duplicate event skip policy, exactly-once behavior, explicit tick recovery, and durable recovery are not implemented.
+See [Processed Event ID Design](processed-event-id-design.md) for the processed event id model and current observe-only runtime wiring. See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the skip-completed policy design. Duplicate event skip behavior, exactly-once behavior, automatic wakeup, and durable recovery are not implemented.
+
+`tickRecoveredRuns` does not consult `ProcessedEventStore` and does not perform duplicate skip.
 
 Without these, automatic wakeup should not be implemented.
 

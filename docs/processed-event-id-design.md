@@ -141,6 +141,8 @@ Recommendation:
 - Default behavior should not silently discard events.
 - Exactly-once must not be claimed.
 
+See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the explicit skip-completed policy design. Duplicate skip policy is documented but not implemented.
+
 ## 9. Runtime Integration Sketch
 
 Current Runtime integration exposes explicit processed event accessors when the configured store supports `ProcessedEventStore`:
@@ -168,6 +170,8 @@ A future duplicate-skip or tick policy can:
 4. Return `EventRecoveryResult` with skip reasons.
 
 Current `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. Current `recoverWaitingRuns` writes observe-only records and does not skip duplicate completed events. Exactly-once remains unimplemented.
+
+The duplicate event skip policy is documented in [Duplicate Event Skip Policy](duplicate-event-skip-policy.md), but runtime duplicate skip behavior is not implemented.
 
 ## 10. FileStateStore Layout
 

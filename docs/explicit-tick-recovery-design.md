@@ -186,7 +186,7 @@ The explicit tick helper needs a separate policy. Options:
 
 Current implementation: `tickRecoveredRuns` does not modify processed event records. Keeping preview recovery and execution recovery separate avoids overloading `ProcessedEventRecord`.
 
-Duplicate skip and exactly-once behavior remain future designs.
+See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the skip-completed policy design. `tickRecoveredRuns` does not read processed event records and does not perform duplicate skip. Duplicate skip and exactly-once behavior remain unimplemented.
 
 ## 11. Error Handling
 
@@ -249,7 +249,7 @@ Implemented tests currently cover:
 Future tests should cover:
 
 - More complex waiting index transitions after successful tick.
-- Duplicate event skip policy once designed.
+- Duplicate event skip policy once implemented.
 - Future trigger-path event handling once designed.
 
 ## 15. Open Questions

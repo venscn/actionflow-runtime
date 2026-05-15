@@ -178,7 +178,7 @@ Candidate future strategy:
 - Do not claim exactly-once delivery in the first version.
 - Return `matched` and `skipped` records so the API does not pretend recovery succeeded.
 
-See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. These accessors do not imply automatic idempotency. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. `recoverWaitingRuns` writes observe-only processed event attempts when supported, but does not skip duplicate events and does not implement exactly-once behavior.
+See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. See [Duplicate Event Skip Policy](duplicate-event-skip-policy.md) for the skip-completed policy design. These accessors do not imply automatic idempotency. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. `recoverWaitingRuns` writes observe-only processed event attempts when supported, but does not skip duplicate events and does not implement exactly-once behavior.
 
 ## 11. Error Handling
 
@@ -273,6 +273,7 @@ Implemented tests currently cover:
 - `tickRecoveredRuns` explicitly ticks recovered runs when called by the host.
 - `tickRecoveredRuns` supports `dryRun`, `maxRuns`, and `continueOnError`.
 - `tickRecoveredRuns` does not execute triggers or write processed event records.
+- Duplicate event skip policy is documented in [Duplicate Event Skip Policy](duplicate-event-skip-policy.md), but not implemented.
 
 Remaining future tests should cover:
 
@@ -280,7 +281,7 @@ Remaining future tests should cover:
 - Stale waiting index entry is reported.
 - Corrupted waiting index surfaces an error.
 - More complex explicit tick recovery behavior.
-- Duplicate event skip behavior once designed.
+- Duplicate event skip behavior once implemented.
 
 ## 16. Open Questions
 
