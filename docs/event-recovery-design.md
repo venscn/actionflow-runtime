@@ -139,7 +139,7 @@ The implemented `recoverWaitingRuns(event)` API returns match/preview recovery r
 - Keeps control with the host.
 - Requires the host to know flow id, version, and actions.
 
-See [Event Recovery Resume Policy](event-recovery-resume-policy.md) for the explicit resume/tick strategy. The current `recoverWaitingRuns` API is match/preview-only; explicit tick recovery and automatic wakeup are not implemented.
+See [Event Recovery Resume Policy](event-recovery-resume-policy.md) and [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the explicit resume/tick strategy. The current `recoverWaitingRuns` API is match/preview-only; explicit tick recovery and automatic wakeup are not implemented.
 
 ### Strategy C: Wake token / state mutation
 
@@ -236,6 +236,7 @@ Phase 5:
 Phase 6:
 
 - Design explicit resume/tick policy. Documented in [Event Recovery Resume Policy](event-recovery-resume-policy.md), not implemented.
+- Design explicit tick recovery helper strategy. Documented in [Explicit Tick Recovery Design](explicit-tick-recovery-design.md), not implemented.
 
 Phase 7:
 

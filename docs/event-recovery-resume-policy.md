@@ -6,7 +6,7 @@
 
 Real recovery still needs policy decisions: whether to tick, when to tick, which runs to tick, and how to handle errors. If runtime automatically ticks after every event, it may repeat execution, run without registered actions or flows, or resume the wrong run for a loosely matched event.
 
-That means resume/tick recovery needs an explicit policy. It should not be introduced as automatic wakeup.
+That means resume/tick recovery needs an explicit policy. It should not be introduced as automatic wakeup. See [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the proposed no-automatic-tick helper design.
 
 ## 2. Current Recovery Capabilities
 
@@ -174,6 +174,8 @@ interface EventRecoveryTickOptions {
 
 recoverWaitingRuns(event: RuntimeEvent, options?: EventRecoveryTickOptions): Promise<EventRecoveryResult>
 ```
+
+See [Explicit Tick Recovery Design](explicit-tick-recovery-design.md) for the recommended `tickRecoveredRuns` helper direction. Explicit tick recovery is still not implemented.
 
 Rules:
 
