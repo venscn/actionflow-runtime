@@ -163,6 +163,8 @@ Event recovery still needs separate design:
 
 `EventTriggerRegistry` does not currently use Waiting Index automatically. Waiting Index is a prerequisite for event recovery, not event recovery itself.
 
+See [Event Recovery Design](event-recovery-design.md) for the proposed first recovery model. Event recovery and automatic wakeup are not implemented.
+
 ## 12. Risks
 
 Known risks:

@@ -94,8 +94,10 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Event recovery design.
-- Phase B: Event recovery implementation.
+- Phase A: Event Recovery design.
+- Phase B: Event Recovery match-only API.
+- Phase C: Explicit resume/tick recovery policy.
+- Phase D: Production store design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -103,7 +105,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Event recovery design.
-- Event recovery implementation.
+- Event Recovery match-only API.
+- Explicit resume/tick recovery policy.
 
-Recommendation: start with Event recovery design. Runtime can now maintain the optional waiting index for MemoryStateStore and FileStateStore, but event recovery and wakeup behavior are still not implemented.
+Recommendation: start with Event Recovery match-only API. This round only adds the design document; event recovery, automatic wakeup, and durable recovery remain unimplemented.

@@ -92,6 +92,7 @@ npm run example:file-store-resume
 - [FileStateStore Staging Design](docs/file-state-store-staging-design.md)
 - [FileStateStore Rollback Evaluation](docs/file-state-store-rollback-evaluation.md)
 - [Waiting Index Design](docs/waiting-index-design.md)
+- [Event Recovery Design](docs/event-recovery-design.md)
 
 ## Facade Example
 
