@@ -128,13 +128,14 @@ If an entry has no `flowRunId`, preview records a skipped entry. If `restoreRun`
 - Lowest risk.
 - Best fit for the first implementation.
 
-### Strategy B: Restore and tick
+### Strategy B: Explicit restore then host tick
 
-- API calls `restoreRun`, then `tick`.
-- More automatic.
-- Requires matching flow and action definitions to be registered.
-- Error handling is more complex.
-- May repeat work if events are duplicated.
+- API returns restored runs.
+- Host calls `tick(restoredRun, flowId)` directly.
+- Keeps control with the host.
+- Requires the host to know flow id, version, and actions.
+
+See [Event Recovery Resume Policy](event-recovery-resume-policy.md) for the explicit resume/tick strategy. The policy is documented, but `recoverWaitingRuns` and automatic wakeup are not implemented.
 
 ### Strategy C: Wake token / state mutation
 
@@ -228,7 +229,7 @@ Phase 5:
 
 Phase 6:
 
-- Design explicit resume/tick policy. Not implemented.
+- Design explicit resume/tick policy. Documented in [Event Recovery Resume Policy](event-recovery-resume-policy.md), not implemented.
 
 Phase 7:
 
@@ -256,7 +257,7 @@ Remaining future tests should cover:
 - Multiple waiting entries match one event.
 - Stale waiting index entry is reported.
 - Corrupted waiting index surfaces an error.
-- Explicit resume/tick recovery policy once designed.
+- Explicit resume/tick recovery behavior once implemented.
 - Duplicate event id behavior once designed.
 
 ## 16. Open Questions
