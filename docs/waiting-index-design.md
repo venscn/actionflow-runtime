@@ -6,7 +6,7 @@ ActionRun can currently enter `waiting` status. FlowEngine can also move a node 
 
 The runtime can maintain a waiting index when the configured StateStore supports `WaitingIndexStore`. `EventTriggerRegistry` is still only a descriptive registry and does not automatically wake waiting actions.
 
-Without a persisted waiting index, future event recovery would need to scan all ActionRun records. That is inefficient and leaves the matching semantics unclear. Current implementation includes Waiting Index types, MemoryStateStore support, and optional Runtime integration. FileStateStore persistence is not implemented.
+Without a persisted waiting index, future event recovery would need to scan all ActionRun records. That is inefficient and leaves the matching semantics unclear. Current implementation includes Waiting Index types, MemoryStateStore support, optional Runtime integration, and FileStateStore JSON persistence.
 
 ## 2. Goals
 
@@ -122,7 +122,7 @@ Rules:
 - Use `safeFileName`.
 - Use JSON-compatible checks.
 - Whether corrupted index files throw or become health issues needs a later decision.
-- Whether `clear()` removes `waiting-runs` needs to be defined.
+- `clear()` removes `waiting-runs`.
 - Waiting index must not be treated as an event queue.
 
 ## 9. MemoryStateStore Behavior
@@ -144,7 +144,7 @@ Suggested phases:
 - Phase 1: helper/types only. Implemented.
 - Phase 2: MemoryStateStore waiting index. Implemented.
 - Phase 3: Runtime optional waiting index path. Implemented.
-- Phase 4: FileStateStore waiting index JSON files. Not implemented.
+- Phase 4: FileStateStore waiting index JSON files. Implemented.
 - Phase 5: health report integration. Not implemented.
 - Phase 6: event recovery design. Not implemented.
 
@@ -187,12 +187,12 @@ Implemented tests cover:
 - Runtime uses waiting index only when the store supports it.
 - Runtime fallback when the store does not support it.
 - Runtime updates waiting index only after persistence succeeds.
-
-Future implementation tests should cover:
-
 - FileStateStore writes waiting index entries.
 - FileStateStore lists waiting index entries.
 - FileStateStore rejects invalid index JSON.
+
+Future implementation tests should cover:
+
 - `restoreRun` does not automatically wake waiting runs.
 - Event recovery is not triggered by the index alone.
 

@@ -25,6 +25,7 @@ Current implemented pieces:
 - Health report issues for pending, failed, and missing target diagnostics.
 - MemoryStateStore waiting index.
 - Runtime optional waiting index path.
+- FileStateStore waiting index.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -36,7 +37,6 @@ The following are not implemented:
 - Durable recovery guarantee.
 - Event recovery.
 - Waiting action wakeup.
-- FileStateStore waiting index.
 - FlowDefinition persistence.
 - EventTriggerDefinition persistence.
 - Database stores.
@@ -94,9 +94,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: FileStateStore waiting index.
-- Phase B: Event recovery design.
-- Phase C: Event recovery implementation.
+- Phase A: Event recovery design.
+- Phase B: Event recovery implementation.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -104,7 +103,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- FileStateStore waiting index.
 - Event recovery design.
+- Event recovery implementation.
 
-Recommendation: start with FileStateStore waiting index. Runtime can now maintain the optional waiting index for stores that support it, but FileStateStore persistence, event recovery, and wakeup behavior are still not implemented.
+Recommendation: start with Event recovery design. Runtime can now maintain the optional waiting index for MemoryStateStore and FileStateStore, but event recovery and wakeup behavior are still not implemented.

@@ -10,10 +10,11 @@ import {
   parseBatchManifest,
   parseEnvelope,
   safeFileName,
-  supportsRunBatch
+  supportsRunBatch,
+  supportsWaitingIndex
 } from "../src/index.js";
 import type { FileStoreBatchManifest } from "../src/index.js";
-import type { ActionRunRecord, FlowRunRecord } from "../src/index.js";
+import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowRunRecord } from "../src/index.js";
 
 describe("FileStateStore", () => {
   const tempDirs: string[] = [];
@@ -238,6 +239,240 @@ describe("FileStateStore", () => {
 
   it("supportsRunBatch returns true for FileStateStore", () => {
     expect(supportsRunBatch(createStore())).toBe(true);
+  });
+
+  it("supportsWaitingIndex returns true for FileStateStore", () => {
+    expect(supportsWaitingIndex(createStore())).toBe(true);
+  });
+
+  it("indexWaitingActionRun writes a waiting index entry", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    expect(store.listWaitingActionRuns()).toEqual([
+      expect.objectContaining({
+        runId: "flow-run-1:node-1",
+        actionId: "wait.action",
+        actionVersion: "1.0.0",
+        waitReason: "external-event",
+        status: "waiting"
+      })
+    ]);
+  });
+
+  it("indexWaitingActionRun requires waiting status", () => {
+    const store = createStore();
+
+    expect(() => store.indexWaitingActionRun(createActionRun("flow-run-1:node-1", "ready"))).toThrow(
+      "ActionRun is not waiting"
+    );
+  });
+
+  it("indexWaitingActionRun requires non-empty waitReason", () => {
+    const store = createStore();
+
+    expect(() => store.indexWaitingActionRun({ ...createWaitingActionRun("flow-run-1:node-1", "") })).toThrow(
+      "waitReason is required"
+    );
+    expect(() =>
+      store.indexWaitingActionRun({
+        ...createWaitingActionRun("flow-run-1:node-1", "external-event"),
+        waitReason: undefined
+      })
+    ).toThrow("waitReason is required");
+  });
+
+  it("indexWaitingActionRun derives flowRunId and nodeId from runId prefix", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    expect(store.listWaitingActionRuns()[0]).toMatchObject({
+      flowRunId: "flow-run-1",
+      nodeId: "node-1"
+    });
+  });
+
+  it("indexWaitingActionRun preserves nested-ish node suffix", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:parallel-root:branch-a", "external-event"));
+
+    expect(store.listWaitingActionRuns()[0]).toMatchObject({
+      flowRunId: "flow-run-1",
+      nodeId: "parallel-root:branch-a"
+    });
+  });
+
+  it("indexWaitingActionRun overwrites same runId", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "first-event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "second-event"));
+
+    expect(store.listWaitingActionRuns()).toHaveLength(1);
+    expect(store.listWaitingActionRuns()[0]).toMatchObject({
+      waitReason: "second-event"
+    });
+  });
+
+  it("removeWaitingActionRun removes an entry", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+    store.removeWaitingActionRun("flow-run-1:node-1");
+
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
+
+  it("removeWaitingActionRun is safe for missing runId", () => {
+    const store = createStore();
+
+    expect(() => store.removeWaitingActionRun("missing-run")).not.toThrow();
+  });
+
+  it("listWaitingActionRuns returns an empty list when waiting-runs directory is missing", () => {
+    const store = createStore();
+
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
+
+  it("listWaitingActionRuns filters by waitReason", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "event-a"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-2", "event-b"));
+
+    expect(store.listWaitingActionRuns({ waitReason: "event-a" }).map((entry) => entry.runId)).toEqual([
+      "flow-run-1:node-1"
+    ]);
+  });
+
+  it("listWaitingActionRuns filters by flowRunId", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-2:node-1", "event"));
+
+    expect(store.listWaitingActionRuns({ flowRunId: "flow-run-2" }).map((entry) => entry.runId)).toEqual([
+      "flow-run-2:node-1"
+    ]);
+  });
+
+  it("listWaitingActionRuns filters by actionId", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "event", "wait.action"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-2", "event", "other.action"));
+
+    expect(store.listWaitingActionRuns({ actionId: "other.action" }).map((entry) => entry.runId)).toEqual([
+      "flow-run-1:node-2"
+    ]);
+  });
+
+  it("listWaitingActionRuns combines filters with AND semantics", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "event-a", "wait.action"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-2", "event-b", "wait.action"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-2:node-1", "event-a", "wait.action"));
+
+    expect(
+      store
+        .listWaitingActionRuns({
+          waitReason: "event-a",
+          flowRunId: "flow-run-1",
+          actionId: "wait.action"
+        })
+        .map((entry) => entry.runId)
+    ).toEqual(["flow-run-1:node-1"]);
+  });
+
+  it("listWaitingActionRuns returns deterministic runId-sorted results", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-c", "event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-a", "event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-b", "event"));
+
+    expect(store.listWaitingActionRuns().map((entry) => entry.runId)).toEqual([
+      "flow-run-1:node-a",
+      "flow-run-1:node-b",
+      "flow-run-1:node-c"
+    ]);
+  });
+
+  it("listWaitingActionRuns throws on corrupted JSON", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeWaitingRunFile(rootDir, "bad-run", "{");
+
+    expect(() => store.listWaitingActionRuns()).toThrow();
+  });
+
+  it("listWaitingActionRuns throws on invalid entry", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeWaitingRunFile(
+      rootDir,
+      "bad-run",
+      JSON.stringify({
+        runId: "bad-run",
+        actionId: "wait.action",
+        waitReason: "external-event",
+        status: "ready",
+        indexedAt: new Date().toISOString()
+      })
+    );
+
+    expect(() => store.listWaitingActionRuns()).toThrow("Invalid waiting status");
+  });
+
+  it("clear removes waiting index entries but keeps rootDir", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+    store.clear();
+
+    expect(existsSync(rootDir)).toBe(true);
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
+
+  it("unsafe runId is saved with safe file name and can be listed and removed", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const unsafeRunId = 'flow/run\\1:node*?"><|';
+
+    store.indexWaitingActionRun(createWaitingActionRun(unsafeRunId, "external-event"));
+
+    expect(existsSync(path.join(rootDir, "waiting-runs", `${safeFileName(unsafeRunId)}.json`))).toBe(true);
+    expect(store.listWaitingActionRuns()[0]).toMatchObject({
+      runId: unsafeRunId
+    });
+
+    store.removeWaitingActionRun(unsafeRunId);
+
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
+
+  it("ActionFlowRuntime.tick with FileStateStore updates waiting index", async () => {
+    const { store } = createStoreWithRoot();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.registerAction(createWaitingAsyncAction("wait.action", "external-event"));
+    runtime.registerFlow(createFlow("flow.wait", "wait.action"));
+
+    const initialRun = runtime.createRun("flow.wait", "flow-run-1");
+    await runtime.tick(initialRun, "flow.wait");
+
+    expect(store.listWaitingActionRuns()).toEqual([
+      expect.objectContaining({
+        runId: "flow-run-1:node-1",
+        flowRunId: "flow-run-1",
+        nodeId: "node-1",
+        actionId: "wait.action",
+        waitReason: "external-event",
+        status: "waiting"
+      })
+    ]);
   });
 
   it("saveRunBatch propagates non-serializable ActionRun errors", () => {
@@ -1133,12 +1368,56 @@ function createActionRun(runId: string, status: ActionRunRecord["status"]): Acti
   };
 }
 
+function createWaitingActionRun(runId: string, waitReason: string, actionId = "wait.action"): ActionRunRecord {
+  return {
+    id: runId,
+    runId,
+    actionId,
+    actionVersion: "1.0.0",
+    status: "waiting",
+    state: { cursor: 1 },
+    waitReason
+  };
+}
+
 function createFlowRun(id: string, status: FlowRunRecord["status"]): FlowRunRecord {
   return {
     id,
     flowId: "flow",
     currentNodeId: "root",
     status
+  };
+}
+
+function createWaitingAsyncAction(
+  id: string,
+  reason: string
+): ActionDefinition<unknown, string, { cursor: number }> {
+  return {
+    id,
+    version: "1.0.0",
+    mode: "async",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    run: () => ({
+      type: "waiting",
+      state: { cursor: 1 },
+      reason
+    })
+  };
+}
+
+function createFlow(id: string, action: string): FlowDefinition {
+  return {
+    id,
+    version: "1.0.0",
+    root: {
+      type: "action",
+      id: "node-1",
+      action
+    }
   };
 }
 
@@ -1158,6 +1437,12 @@ function writeCommittedBatchFile(rootDir: string, fileName: string, content: str
   const dir = path.join(rootDir, "batches", "committed");
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, fileName), content, "utf8");
+}
+
+function writeWaitingRunFile(rootDir: string, runId: string, content: string): void {
+  const dir = path.join(rootDir, "waiting-runs");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, `${safeFileName(runId)}.json`), content, "utf8");
 }
 
 function writeFailedBatchFile(rootDir: string, fileName: string, content: string): void {

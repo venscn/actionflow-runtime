@@ -37,7 +37,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **SliceScheduler**: the component that advances ready sliceable ActionRuns within frame and slice budgets.
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
 - **ActionFlowRuntime**: a lightweight facade that wires registries, store, and FlowEngine together.
-- **StateStore**: storage abstraction for run records. Current implementations include MemoryStateStore and FileStateStore. FileStateStore persists ActionRun / FlowRun records only. `BatchStateStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore. `WaitingIndexStore` is an optional extension currently implemented by MemoryStateStore.
+- **StateStore**: storage abstraction for run records. Current implementations include MemoryStateStore and FileStateStore. FileStateStore persists ActionRun / FlowRun records only. `BatchStateStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore. `WaitingIndexStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore.
 - **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation and optional action/flow registry consistency checks.
 - **Event Trigger**: a descriptive rule that maps an event name to a flow id. Current support is validation and in-memory definition management only.
 
@@ -265,6 +265,8 @@ A parallel node has `branches`.
 - A `clean` health status does not mean durable recovery is guaranteed.
 - `listPendingBatches()` does not mutate pending batches.
 - Invalid or corrupted pending manifests are reported as errors.
+- It implements `WaitingIndexStore` using `waiting-runs` JSON files.
+- When configured on `ActionFlowRuntime`, runtime can maintain the waiting index after successful persistence.
 - It can persist yielded sliceable ActionRun records as long as action state is JSON-compatible.
 - It can be used with `ActionFlowRuntime.restoreRun` for local record reload.
 - `restoreRun` can reload yielded sliceable ActionRun records, and a later explicit `tick` can continue execution.
@@ -280,9 +282,9 @@ A parallel node has `branches`.
 
 - It indexes ActionRuns with `status: "waiting"` and a non-empty `waitReason`.
 - It supports filtering by `waitReason`, `flowRunId`, and `actionId`.
-- It is currently implemented by MemoryStateStore.
+- It is currently implemented by MemoryStateStore and FileStateStore.
+- FileStateStore stores waiting index entries under `waiting-runs` JSON files.
 - Runtime updates it from `ActionFlowRuntime.tick` when the configured store supports the optional interface.
-- FileStateStore does not yet persist waiting index entries.
 - Event recovery and automatic wakeup are not implemented.
 
 ## 13. Current Limitations
@@ -292,7 +294,7 @@ The following are not implemented:
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
-- WaitingIndexStore exists for MemoryStateStore and Runtime tick integration, but FileStateStore waiting index persistence, waiting action wakeup, and event recovery are not implemented.
+- WaitingIndexStore exists for MemoryStateStore, FileStateStore, and Runtime tick integration, but waiting action wakeup and event recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.
