@@ -94,6 +94,7 @@ npm run example:file-store-resume
 - [Waiting Index Design](docs/waiting-index-design.md)
 - [Event Recovery Design](docs/event-recovery-design.md)
 - [Event Recovery Resume Policy](docs/event-recovery-resume-policy.md)
+- [Processed Event ID Design](docs/processed-event-id-design.md)
 
 ## Facade Example
 

@@ -173,6 +173,8 @@ Candidate future strategy:
 - Do not claim exactly-once delivery in the first version.
 - Return `matched` and `skipped` records so the API does not pretend recovery succeeded.
 
+See [Processed Event ID Design](processed-event-id-design.md) for the proposed processed event id index. The design is documented, but no processed event id store or exactly-once behavior is implemented.
+
 ## 11. Error Handling
 
 Suggested behavior:
@@ -233,6 +235,10 @@ Phase 6:
 
 Phase 7:
 
+- Design processed event id index. Documented in [Processed Event ID Design](processed-event-id-design.md), not implemented.
+
+Phase 8:
+
 - Integrate the `EventTriggerRegistry` start-flow path separately.
 
 ## 15. Tests Needed
@@ -264,7 +270,7 @@ Remaining future tests should cover:
 
 - Should `event.name` directly match `waitReason`?
 - Is an `eventKey` field needed?
-- Is a processed event index needed?
+- What processed event id policy should be implemented first?
 - Is a match-only API enough for the first version?
 - Should recovery belong to `ActionFlowRuntime`?
 - Is a separate `EventRecoveryService` needed?

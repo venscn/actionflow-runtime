@@ -202,6 +202,8 @@ Automatic tick needs at least:
 - Side-effect policy.
 - Persistence transaction strategy.
 
+See [Processed Event ID Design](processed-event-id-design.md) for the proposed processed event id index. It is documented, not implemented.
+
 Without these, automatic wakeup should not be implemented.
 
 ## 10. Error Handling Policy

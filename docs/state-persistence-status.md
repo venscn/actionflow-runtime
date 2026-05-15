@@ -29,6 +29,7 @@ Current implemented pieces:
 - Event Recovery match-only API.
 - Event Recovery restore preview API.
 - Event Recovery resume policy design.
+- Processed Event ID design.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -38,8 +39,10 @@ Current implemented pieces:
 The following are not implemented:
 
 - Durable recovery guarantee.
+- Processed event id store.
 - `recoverWaitingRuns`.
 - Waiting action wakeup.
+- Exactly-once behavior.
 - Event trigger execution.
 - FlowDefinition persistence.
 - EventTriggerDefinition persistence.
@@ -98,10 +101,11 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Processed event id design.
-- Phase B: `recoverWaitingRuns` match/preview integration.
-- Phase C: Explicit tick recovery implementation.
-- Phase D: Production store design.
+- Phase A: Processed Event ID store types.
+- Phase B: MemoryStateStore processed event id.
+- Phase C: FileStateStore processed event id.
+- Phase D: `recoverWaitingRuns` match/preview integration.
+- Phase E: Explicit tick recovery implementation.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -109,7 +113,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Processed event id design.
+- Processed Event ID store types.
 - `recoverWaitingRuns` match/preview integration.
 
-Recommendation: start with processed event id design. The resume/tick policy is now documented, but `recoverWaitingRuns`, automatic wakeup, exactly-once behavior, and durable recovery are still not implemented.
+Recommendation: start with Processed Event ID store types. The design is now documented, but processed event id storage, `recoverWaitingRuns`, automatic wakeup, exactly-once behavior, and durable recovery are still not implemented.
