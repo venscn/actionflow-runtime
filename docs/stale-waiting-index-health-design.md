@@ -12,7 +12,7 @@ The waiting index can still become inconsistent with stored run records:
 - The waiting index entry has no `flowRunId`.
 - The waiting index entry points to a FlowRun that does not exist.
 
-These cases can make `matchWaitingRuns` and `previewEventRecovery` return stale entries. Current FileStateStore `checkHealth` reports batch marker issues and missing committed target files, but it does not validate waiting index consistency.
+These cases can make `matchWaitingRuns` and `previewEventRecovery` return stale entries. FileStateStore `checkHealth` reports batch marker issues, missing committed target files, and waiting index consistency diagnostics.
 
 ## 2. Goals
 
@@ -46,7 +46,7 @@ These cases can make `matchWaitingRuns` and `previewEventRecovery` return stale 
 - `previewEventRecovery(event)` uses waiting index `flowRunId` values for restore preview.
 - `recoverWaitingRuns(event)` is based on `previewEventRecovery`.
 - `tickRecoveredRuns(result, options)` only processes the `result.recovered` values passed by the host.
-- Current health checks do not validate whether waiting index entries are stale.
+- FileStateStore `checkHealth` validates waiting index entries and reports stale waiting index diagnostics.
 
 ## 5. Proposed Health Issue Types
 
@@ -75,11 +75,11 @@ interface WaitingIndexHealthIssue {
 }
 ```
 
-These are design candidates only. They are not implemented.
+These issue types are implemented for FileStateStore `checkHealth` diagnostics.
 
 ## 6. Validation Rules
 
-For each waiting index entry, a future read-only validation can:
+For each waiting index entry, FileStateStore `checkHealth` performs read-only validation:
 
 1. Resolve ActionRun by `entry.runId`.
 2. If missing, report `waiting-index-missing-action-run`.
@@ -93,18 +93,18 @@ All rules report diagnostics only. They do not repair records. If the store cann
 
 ## 7. FileStateStore checkHealth Integration
 
-FileStateStore `checkHealth` currently reports batch marker counts, pending and failed batch issues, and missing committed target files.
+FileStateStore `checkHealth` currently reports batch marker counts, pending and failed batch issues, missing committed target files, and waiting index issues.
 
-Future waiting index integration can add either:
+Implemented waiting index fields:
 
-- `waitingIndexIssueCount` and `waitingIndexIssues`, or
-- additional entries in the existing `issues` array.
+- `waitingIndexIssueCount`
+- `waitingIndexIssues`
 
-The first implementation should avoid breaking current `checkHealth` output. It must not delete `waiting-runs` files, rewrite ActionRuns, or change waiting entries.
+The implementation does not delete `waiting-runs` files, rewrite ActionRuns, or change waiting entries.
 
 ## 8. MemoryStateStore Considerations
 
-MemoryStateStore has a waiting index, but it does not currently expose a health API. A first implementation can focus on FileStateStore because FileStateStore is where stale JSON records are inspectable.
+MemoryStateStore has a waiting index, but it does not currently expose a health API. The first implementation focuses on FileStateStore because FileStateStore is where stale JSON records are inspectable.
 
 If a generic health API is needed later, it should be designed separately as a `StateStoreHealth` capability rather than forced into the base `StateStore` interface.
 
@@ -138,7 +138,9 @@ The default API posture should remain read-only. Destructive repair must require
 - No deletion without an explicit repair API.
 - Stale entries are reported as diagnostics only.
 
-## 12. Tests Needed If Implemented
+## 12. Tests
+
+Implemented tests cover:
 
 - Clean waiting index produces no waiting health issues.
 - Missing ActionRun produces `waiting-index-missing-action-run`.
@@ -152,6 +154,11 @@ The default API posture should remain read-only. Destructive repair must require
 - Corrupted waiting index JSON behavior is explicit.
 - Existing batch health issues are still reported.
 - Health status clean/dirty policy is deterministic.
+
+Future tests should cover:
+
+- Waiting index repair plan behavior once designed.
+- Generic MemoryStateStore health behavior if a generic health API is added.
 
 ## 13. Open Questions
 

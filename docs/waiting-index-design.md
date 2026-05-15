@@ -145,7 +145,7 @@ Suggested phases:
 - Phase 2: MemoryStateStore waiting index. Implemented.
 - Phase 3: Runtime optional waiting index path. Implemented.
 - Phase 4: FileStateStore waiting index JSON files. Implemented.
-- Phase 5: health report integration. Designed in [Stale Waiting Index Health Design](stale-waiting-index-health-design.md), not implemented.
+- Phase 5: FileStateStore health report integration. Implemented.
 - Phase 6: event recovery design and first read-only APIs. Partially implemented; automatic wakeup is not implemented.
 
 ## 11. Event Recovery Relationship
@@ -178,7 +178,7 @@ Known risks:
 - Failed removal can leave stale index entries.
 - FileStateStore does not provide multi-process safety.
 
-See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the proposed read-only health checks. Stale waiting index health checks and repair APIs are not implemented.
+See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the FileStateStore read-only health checks. Waiting index repair APIs are not implemented.
 
 ## 13. Tests Needed
 
@@ -194,11 +194,13 @@ Implemented tests cover:
 - FileStateStore writes waiting index entries.
 - FileStateStore lists waiting index entries.
 - FileStateStore rejects invalid index JSON.
+- FileStateStore `checkHealth` reports stale waiting index diagnostics.
 
 Future implementation tests should cover:
 
 - `restoreRun` does not automatically wake waiting runs.
 - Event recovery is not triggered by the index alone.
+- Waiting index repair APIs once designed.
 
 ## 14. Open Questions
 
@@ -208,5 +210,4 @@ Future implementation tests should cover:
 - Should indexed FlowRun status be included?
 - Should sequence/parallel node waiting states be indexed?
 - Should the index be rebuildable from ActionRun records?
-- Should Waiting Index participate in `checkHealth`?
-- Is a delete-stale-index API needed?
+- What explicit repair API should remove stale waiting index entries?

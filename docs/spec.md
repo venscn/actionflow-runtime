@@ -276,7 +276,7 @@ A parallel node has `branches`.
 - `listFailedBatches()` can list and parse failed markers.
 - `checkHealth()` summarizes pending, committed, and failed batch marker counts.
 - `checkHealth()` can report issue records for pending batches, failed batches, and missing committed target files.
-- Stale waiting index health checks are designed but not implemented; `checkHealth()` does not validate waiting index consistency yet.
+- `checkHealth()` validates waiting index consistency and reports `waitingIndexIssues`.
 - Pending manifests are diagnostic only.
 - Committed markers are diagnostic only and do not make batch writes atomic.
 - Failed markers are best-effort diagnostics only and do not roll back or recover partial writes.
@@ -306,7 +306,7 @@ A parallel node has `branches`.
 - It is currently implemented by MemoryStateStore and FileStateStore.
 - FileStateStore stores waiting index entries under `waiting-runs` JSON files.
 - Runtime updates it from `ActionFlowRuntime.tick` when the configured store supports the optional interface.
-- Stale waiting index health checks are designed but not implemented.
+- FileStateStore `checkHealth()` can report stale waiting index diagnostics.
 - Automatic wakeup and event trigger execution are not implemented.
 
 `ProcessedEventStore` is an optional StateStore extension for processed event id tracking:
@@ -327,7 +327,7 @@ The following are not implemented:
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
-- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, read-only `matchWaitingRuns`, read-only `previewEventRecovery`, match/preview-only `recoverWaitingRuns`, and explicit `tickRecoveredRuns`, but stale waiting index health checks, automatic wakeup, durable recovery, retry-failed / stale-started duplicate policies, exactly-once behavior, and event trigger execution are not implemented.
+- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, FileStateStore stale waiting index health diagnostics, read-only `matchWaitingRuns`, read-only `previewEventRecovery`, match/preview-only `recoverWaitingRuns`, and explicit `tickRecoveredRuns`, but waiting index repair APIs, automatic wakeup, durable recovery, retry-failed / stale-started duplicate policies, exactly-once behavior, and event trigger execution are not implemented.
 - ProcessedEventStore is implemented by MemoryStateStore and FileStateStore and exposed through explicit ActionFlowRuntime accessors. `recoverWaitingRuns` supports explicit `skip-completed` duplicate policy, but exactly-once behavior, automatic wakeup, event trigger execution, and durable event recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.

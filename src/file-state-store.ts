@@ -47,7 +47,7 @@ export interface FileStateStoreFailedBatch {
   manifest: FileStoreBatchManifest;
 }
 
-export type FileStateStoreBatchHealthStatus = "clean" | "has-pending" | "has-failed" | "has-pending-and-failed";
+export type FileStateStoreBatchHealthStatus = "clean" | "dirty" | "has-pending" | "has-failed" | "has-pending-and-failed";
 
 export type FileStateStoreHealthIssueKind = "missing-target-file" | "failed-batch" | "pending-batch";
 
@@ -58,12 +58,31 @@ export interface FileStateStoreHealthIssue {
   message: string;
 }
 
+export type WaitingIndexHealthIssueType =
+  | "waiting-index-missing-action-run"
+  | "waiting-index-action-run-not-waiting"
+  | "waiting-index-wait-reason-mismatch"
+  | "waiting-index-missing-flow-run-id"
+  | "waiting-index-missing-flow-run"
+  | "waiting-index-action-id-mismatch";
+
+export interface WaitingIndexHealthIssue {
+  type: WaitingIndexHealthIssueType;
+  runId: string;
+  flowRunId?: string;
+  actionId?: string;
+  waitReason?: string;
+  message: string;
+}
+
 export interface FileStateStoreHealth {
   status: FileStateStoreBatchHealthStatus;
   pendingBatches: readonly FileStateStorePendingBatch[];
   committedBatches: readonly FileStateStoreCommittedBatch[];
   failedBatches: readonly FileStateStoreFailedBatch[];
   issues: readonly FileStateStoreHealthIssue[];
+  waitingIndexIssueCount: number;
+  waitingIndexIssues: readonly WaitingIndexHealthIssue[];
   summary: {
     pending: number;
     committed: number;
@@ -168,13 +187,16 @@ export class FileStateStore implements BatchStateStore, WaitingIndexStore, Proce
     const pending = pendingBatches.length;
     const failed = failedBatches.length;
     const issues = this.collectHealthIssues(pendingBatches, committedBatches, failedBatches);
+    const waitingIndexIssues = this.collectWaitingIndexHealthIssues();
 
     return {
-      status: batchHealthStatus(pending, failed),
+      status: waitingIndexIssues.length > 0 ? "dirty" : batchHealthStatus(pending, failed),
       pendingBatches,
       committedBatches,
       failedBatches,
       issues,
+      waitingIndexIssueCount: waitingIndexIssues.length,
+      waitingIndexIssues,
       summary: {
         pending,
         committed: committedBatches.length,
@@ -314,6 +336,81 @@ export class FileStateStore implements BatchStateStore, WaitingIndexStore, Proce
             message: `Missing target file for batch ${batch.manifest.batchId}: ${targetFile}`
           });
         }
+      }
+    }
+
+    return issues;
+  }
+
+  private collectWaitingIndexHealthIssues(): WaitingIndexHealthIssue[] {
+    const issues: WaitingIndexHealthIssue[] = [];
+
+    for (const entry of this.listWaitingActionRuns()) {
+      const actionRun = this.getActionRun(entry.runId);
+
+      if (!actionRun) {
+        issues.push({
+          type: "waiting-index-missing-action-run",
+          runId: entry.runId,
+          flowRunId: entry.flowRunId,
+          actionId: entry.actionId,
+          waitReason: entry.waitReason,
+          message: `Missing ActionRun for waiting index entry: ${entry.runId}`
+        });
+        continue;
+      }
+
+      if (actionRun.status !== "waiting") {
+        issues.push({
+          type: "waiting-index-action-run-not-waiting",
+          runId: entry.runId,
+          flowRunId: entry.flowRunId,
+          actionId: entry.actionId,
+          waitReason: entry.waitReason,
+          message: `ActionRun is not waiting for waiting index entry: ${entry.runId}`
+        });
+        continue;
+      }
+
+      if (actionRun.waitReason !== entry.waitReason) {
+        issues.push({
+          type: "waiting-index-wait-reason-mismatch",
+          runId: entry.runId,
+          flowRunId: entry.flowRunId,
+          actionId: entry.actionId,
+          waitReason: entry.waitReason,
+          message: `waitReason mismatch for waiting index entry: ${entry.runId}`
+        });
+      }
+
+      if (typeof entry.flowRunId !== "string" || entry.flowRunId.length === 0) {
+        issues.push({
+          type: "waiting-index-missing-flow-run-id",
+          runId: entry.runId,
+          actionId: entry.actionId,
+          waitReason: entry.waitReason,
+          message: `Missing flowRunId for waiting index entry: ${entry.runId}`
+        });
+      } else if (!this.getFlowRun(entry.flowRunId)) {
+        issues.push({
+          type: "waiting-index-missing-flow-run",
+          runId: entry.runId,
+          flowRunId: entry.flowRunId,
+          actionId: entry.actionId,
+          waitReason: entry.waitReason,
+          message: `Missing FlowRun for waiting index entry: ${entry.runId}`
+        });
+      }
+
+      if (actionRun.actionId !== entry.actionId) {
+        issues.push({
+          type: "waiting-index-action-id-mismatch",
+          runId: entry.runId,
+          flowRunId: entry.flowRunId,
+          actionId: entry.actionId,
+          waitReason: entry.waitReason,
+          message: `actionId mismatch for waiting index entry: ${entry.runId}`
+        });
       }
     }
 
