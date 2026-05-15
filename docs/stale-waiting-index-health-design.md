@@ -118,16 +118,14 @@ Automatic wakeup is still not implemented.
 
 ## 10. Relationship With Repair APIs
 
-Repair APIs are designed in [Waiting Index Repair Design](waiting-index-repair-design.md), but they are not implemented.
+FileStateStore repair plan APIs are implemented and described in [Waiting Index Repair Design](waiting-index-repair-design.md).
 
-Future repair-oriented APIs could include:
+Implemented repair-oriented APIs include:
 
-- `inspectWaitingIndex()`
 - `createWaitingIndexRepairPlan()`
 - `applyWaitingIndexRepairPlan()`
-- `removeStaleWaitingEntry(runId)`
 
-The default API posture should remain read-only. Destructive repair must require an explicit method call and should not run inside `checkHealth`.
+`checkHealth` remains read-only. `createWaitingIndexRepairPlan()` is also read-only. Destructive repair requires an explicit `applyWaitingIndexRepairPlan()` call and only removes waiting index entries.
 
 ## 11. Safety Rules
 
@@ -159,7 +157,6 @@ Implemented tests cover:
 
 Future tests should cover:
 
-- Waiting index repair plan behavior once implemented.
 - Generic MemoryStateStore health behavior if a generic health API is added.
 
 ## 13. Open Questions

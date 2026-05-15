@@ -277,12 +277,14 @@ A parallel node has `branches`.
 - `checkHealth()` summarizes pending, committed, and failed batch marker counts.
 - `checkHealth()` can report issue records for pending batches, failed batches, and missing committed target files.
 - `checkHealth()` validates waiting index consistency and reports `waitingIndexIssues`.
-- Waiting index repair APIs are designed but not implemented.
+- `createWaitingIndexRepairPlan()` creates an explicit read-only repair plan from waiting index health issues.
+- `applyWaitingIndexRepairPlan()` explicitly applies a repair plan by removing waiting index entries only.
 - Pending manifests are diagnostic only.
 - Committed markers are diagnostic only and do not make batch writes atomic.
 - Failed markers are best-effort diagnostics only and do not roll back or recover partial writes.
 - `checkHealth()` is diagnostic only and does not repair, recover, roll back, delete markers, or validate full data consistency.
 - `checkHealth()` does not repair stale waiting entries.
+- Waiting index repair is explicit and does not delete ActionRun or FlowRun records.
 - There is no automatic waiting index repair, wakeup, or trigger execution.
 - Missing target file reports do not perform repair.
 - A `clean` health status does not mean durable recovery is guaranteed.
@@ -309,7 +311,8 @@ A parallel node has `branches`.
 - FileStateStore stores waiting index entries under `waiting-runs` JSON files.
 - Runtime updates it from `ActionFlowRuntime.tick` when the configured store supports the optional interface.
 - FileStateStore `checkHealth()` can report stale waiting index diagnostics.
-- Waiting index repair APIs are designed but not implemented.
+- FileStateStore supports explicit waiting index repair plan APIs.
+- Repair only removes waiting index entries and does not wake actions or execute triggers.
 - Automatic wakeup and event trigger execution are not implemented.
 
 `ProcessedEventStore` is an optional StateStore extension for processed event id tracking:
@@ -330,7 +333,7 @@ The following are not implemented:
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
-- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, FileStateStore stale waiting index health diagnostics, read-only `matchWaitingRuns`, read-only `previewEventRecovery`, match/preview-only `recoverWaitingRuns`, and explicit `tickRecoveredRuns`, but waiting index repair APIs, automatic wakeup, durable recovery, retry-failed / stale-started duplicate policies, exactly-once behavior, and event trigger execution are not implemented.
+- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, FileStateStore stale waiting index health diagnostics, explicit FileStateStore repair plan APIs, read-only `matchWaitingRuns`, read-only `previewEventRecovery`, match/preview-only `recoverWaitingRuns`, and explicit `tickRecoveredRuns`, but automatic wakeup, durable recovery, retry-failed / stale-started duplicate policies, exactly-once behavior, and event trigger execution are not implemented.
 - ProcessedEventStore is implemented by MemoryStateStore and FileStateStore and exposed through explicit ActionFlowRuntime accessors. `recoverWaitingRuns` supports explicit `skip-completed` duplicate policy, but exactly-once behavior, automatic wakeup, event trigger execution, and durable event recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.

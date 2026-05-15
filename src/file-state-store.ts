@@ -75,6 +75,32 @@ export interface WaitingIndexHealthIssue {
   message: string;
 }
 
+export type WaitingIndexRepairActionType = "remove-waiting-index-entry";
+
+export interface WaitingIndexRepairAction {
+  type: WaitingIndexRepairActionType;
+  runId: string;
+  reason: string;
+  issueTypes: WaitingIndexHealthIssueType[];
+}
+
+export interface WaitingIndexRepairPlan {
+  createdAt: string;
+  actions: readonly WaitingIndexRepairAction[];
+  skippedIssues: readonly WaitingIndexHealthIssue[];
+}
+
+export interface WaitingIndexRepairPlanOptions {
+  includeMismatches?: boolean;
+}
+
+export interface WaitingIndexRepairResult {
+  appliedAt: string;
+  removedRunIds: readonly string[];
+  skippedRunIds: readonly string[];
+  errors: ReadonlyArray<{ runId: string; message: string }>;
+}
+
 export interface FileStateStoreHealth {
   status: FileStateStoreBatchHealthStatus;
   pendingBatches: readonly FileStateStorePendingBatch[];
@@ -203,6 +229,104 @@ export class FileStateStore implements BatchStateStore, WaitingIndexStore, Proce
         failed
       }
       };
+  }
+
+  createWaitingIndexRepairPlan(options: WaitingIndexRepairPlanOptions = {}): WaitingIndexRepairPlan {
+    const includeMismatches = options.includeMismatches === true;
+    const actionsByRunId = new Map<string, WaitingIndexRepairAction>();
+    const skippedIssues: WaitingIndexHealthIssue[] = [];
+
+    for (const issue of this.checkHealth().waitingIndexIssues) {
+      if (!isRepairableWaitingIndexIssue(issue.type, includeMismatches)) {
+        skippedIssues.push(issue);
+        continue;
+      }
+
+      const existingAction = actionsByRunId.get(issue.runId);
+      if (existingAction) {
+        if (!existingAction.issueTypes.includes(issue.type)) {
+          existingAction.issueTypes.push(issue.type);
+        }
+        continue;
+      }
+
+      actionsByRunId.set(issue.runId, {
+        type: "remove-waiting-index-entry",
+        runId: issue.runId,
+        reason: issue.message,
+        issueTypes: [issue.type]
+      });
+    }
+
+    return {
+      createdAt: new Date().toISOString(),
+      actions: Array.from(actionsByRunId.values()),
+      skippedIssues
+    };
+  }
+
+  applyWaitingIndexRepairPlan(plan: WaitingIndexRepairPlan): WaitingIndexRepairResult {
+    if (!isPlainObject(plan)) {
+      throw new Error("Waiting index repair plan must be an object");
+    }
+
+    if (!Array.isArray(plan.actions)) {
+      throw new Error("Waiting index repair plan actions must be an array");
+    }
+
+    const removedRunIds: string[] = [];
+    const skippedRunIds: string[] = [];
+    const errors: Array<{ runId: string; message: string }> = [];
+
+    for (const action of plan.actions) {
+      if (!isPlainObject(action)) {
+        errors.push({
+          runId: "",
+          message: "Invalid waiting index repair action"
+        });
+        continue;
+      }
+
+      const runId = typeof action.runId === "string" ? action.runId : "";
+
+      if (action.type !== "remove-waiting-index-entry") {
+        errors.push({
+          runId,
+          message: "Invalid repair action type"
+        });
+        continue;
+      }
+
+      if (!isNonEmptyString(action.runId)) {
+        errors.push({
+          runId,
+          message: "Invalid repair action runId"
+        });
+        continue;
+      }
+
+      if (!existsSync(this.waitingRunPath(action.runId))) {
+        skippedRunIds.push(action.runId);
+        continue;
+      }
+
+      try {
+        this.removeWaitingActionRun(action.runId);
+        removedRunIds.push(action.runId);
+      } catch (error) {
+        errors.push({
+          runId: action.runId,
+          message: describeError(error)
+        });
+      }
+    }
+
+    return {
+      appliedAt: new Date().toISOString(),
+      removedRunIds,
+      skippedRunIds,
+      errors
+    };
   }
 
   indexWaitingActionRun(run: ActionRunRecord): void {
@@ -788,6 +912,23 @@ function matchesWaitingFilter(entry: WaitingRunIndexEntry, filter: WaitingRunFil
   }
 
   return true;
+}
+
+function isRepairableWaitingIndexIssue(type: WaitingIndexHealthIssueType, includeMismatches: boolean): boolean {
+  switch (type) {
+    case "waiting-index-missing-action-run":
+    case "waiting-index-action-run-not-waiting":
+    case "waiting-index-missing-flow-run":
+    case "waiting-index-missing-flow-run-id":
+      return true;
+    case "waiting-index-wait-reason-mismatch":
+    case "waiting-index-action-id-mismatch":
+      return includeMismatches;
+  }
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

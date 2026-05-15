@@ -36,6 +36,7 @@ Current implemented pieces:
 - Stale Waiting Index Health design.
 - FileStateStore stale waiting index health checks.
 - Waiting Index Repair design.
+- FileStateStore waiting index repair plan APIs.
 - Processed Event ID design.
 - Processed Event ID store types.
 - MemoryStateStore processed event id.
@@ -52,7 +53,6 @@ Current implemented pieces:
 The following are not implemented:
 
 - Durable recovery guarantee.
-- Waiting index repair APIs.
 - Waiting action wakeup.
 - Retry-failed / stale-started duplicate policies.
 - Exactly-once behavior.
@@ -114,8 +114,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Waiting index repair implementation.
-- Phase B: Trigger start-flow design.
+- Phase A: Trigger start-flow design.
+- Phase B: Event trigger execution design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -123,7 +123,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Waiting index repair implementation.
 - Trigger start-flow design.
+- Event trigger execution design.
 
-Recommendation: start with waiting index repair implementation. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and FileStateStore can report stale waiting index diagnostics, but repair APIs, automatic wakeup, exactly-once behavior, event trigger execution, and durable recovery are still not implemented.
+Recommendation: start with Trigger start-flow design. MemoryStateStore and FileStateStore storage plus explicit runtime accessors now exist, and FileStateStore can report and explicitly repair stale waiting index diagnostics, but automatic wakeup, exactly-once behavior, event trigger execution, and durable recovery are still not implemented.

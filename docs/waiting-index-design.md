@@ -146,7 +146,7 @@ Suggested phases:
 - Phase 3: Runtime optional waiting index path. Implemented.
 - Phase 4: FileStateStore waiting index JSON files. Implemented.
 - Phase 5: FileStateStore health report integration. Implemented.
-- Phase 6: waiting index repair design. Documented in [Waiting Index Repair Design](waiting-index-repair-design.md), not implemented.
+- Phase 6: FileStateStore waiting index repair plan APIs. Implemented and documented in [Waiting Index Repair Design](waiting-index-repair-design.md).
 - Phase 7: event recovery design and first read-only APIs. Partially implemented; automatic wakeup is not implemented.
 
 ## 11. Event Recovery Relationship
@@ -179,7 +179,7 @@ Known risks:
 - Failed removal can leave stale index entries.
 - FileStateStore does not provide multi-process safety.
 
-See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the FileStateStore read-only health checks. See [Waiting Index Repair Design](waiting-index-repair-design.md) for the proposed explicit repair APIs. Waiting index repair APIs are not implemented.
+See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the FileStateStore read-only health checks. See [Waiting Index Repair Design](waiting-index-repair-design.md) for the explicit FileStateStore repair plan APIs. Repair is explicit and only removes waiting index entries.
 
 ## 13. Tests Needed
 
@@ -196,12 +196,12 @@ Implemented tests cover:
 - FileStateStore lists waiting index entries.
 - FileStateStore rejects invalid index JSON.
 - FileStateStore `checkHealth` reports stale waiting index diagnostics.
+- FileStateStore creates and applies explicit waiting index repair plans.
 
 Future implementation tests should cover:
 
 - `restoreRun` does not automatically wake waiting runs.
 - Event recovery is not triggered by the index alone.
-- Waiting index repair APIs once implemented.
 
 ## 14. Open Questions
 

@@ -79,9 +79,9 @@ Scan all ActionRun records with `status: "waiting"` and rebuild waiting index fi
 
 Recommended first design: Strategy B plus Strategy C. Start with removing stale waiting index entries, and do not implement automatic rebuild.
 
-## 6. Proposed Repair Plan Model
+## 6. Repair Plan Model
 
-Candidate types, not implemented:
+Implemented FileStateStore repair plan types:
 
 ```ts
 type WaitingIndexRepairActionType = "remove-waiting-index-entry";
@@ -125,7 +125,7 @@ Mismatch cases are ambiguous: either the ActionRun or the index entry may be sta
 
 ## 8. Candidate APIs
 
-Candidate FileStateStore APIs, not implemented:
+Implemented FileStateStore APIs:
 
 ```ts
 createWaitingIndexRepairPlan(options?: WaitingIndexRepairPlanOptions): WaitingIndexRepairPlan;
@@ -147,9 +147,10 @@ interface WaitingIndexRepairResult {
 Rules:
 
 - `includeMismatches` defaults to `false`.
+- `createWaitingIndexRepairPlan` is read-only.
 - `applyWaitingIndexRepairPlan` only deletes waiting index entries.
-- If an entry is already missing, it should be treated as skipped or no-op; the implementation must choose and test one behavior.
-- Partial filesystem errors should be reported structurally where practical.
+- If an entry is already missing, it is reported in `skippedRunIds`.
+- Per-action filesystem errors are reported structurally and do not stop later actions.
 - Options validation errors can throw.
 
 ## 9. Safety Rules
@@ -169,7 +170,7 @@ Rules:
 
 ## 10. FileStateStore First Implementation Scope
 
-First implementation scope should be:
+First implementation scope is:
 
 - FileStateStore only.
 - Use existing `checkHealth().waitingIndexIssues`.
@@ -198,24 +199,31 @@ Repair APIs do not execute `EventTriggerRegistry`.
 
 Future trigger start-flow design is a separate path. Repair should not create a new FlowRun.
 
-## 14. Tests Needed If Implemented
+## 14. Tests
 
-- `createRepairPlan` returns an empty plan for clean health.
-- `createRepairPlan` creates a remove action for missing ActionRun.
-- `createRepairPlan` creates a remove action for ActionRun not waiting.
-- `createRepairPlan` creates a remove action for missing FlowRun.
-- `createRepairPlan` creates a remove action for missing `flowRunId`.
-- `createRepairPlan` skips waitReason mismatch by default.
-- `createRepairPlan` skips actionId mismatch by default.
+Implemented tests cover:
+
+- `createWaitingIndexRepairPlan` returns an empty plan for clean health.
+- `createWaitingIndexRepairPlan` creates a remove action for missing ActionRun.
+- `createWaitingIndexRepairPlan` creates a remove action for ActionRun not waiting.
+- `createWaitingIndexRepairPlan` creates a remove action for missing FlowRun.
+- `createWaitingIndexRepairPlan` creates a remove action for missing `flowRunId`.
+- `createWaitingIndexRepairPlan` skips waitReason mismatch by default.
+- `createWaitingIndexRepairPlan` skips actionId mismatch by default.
 - `includeMismatches` includes mismatch remove actions.
-- `applyRepairPlan` removes waiting index entries.
-- `applyRepairPlan` does not delete ActionRun records.
-- `applyRepairPlan` does not delete FlowRun records.
-- `applyRepairPlan` is explicit and `checkHealth` remains read-only.
-- `applyRepairPlan` handles an already missing entry as no-op or skipped.
-- `applyRepairPlan` reports partial errors.
-- Repair does not execute triggers.
+- Multiple repairable issues for one runId are merged into one action.
+- `applyWaitingIndexRepairPlan` removes waiting index entries.
+- `applyWaitingIndexRepairPlan` does not delete ActionRun records.
+- `applyWaitingIndexRepairPlan` does not delete FlowRun records.
+- `applyWaitingIndexRepairPlan` is explicit and `checkHealth` remains read-only.
+- `applyWaitingIndexRepairPlan` handles an already missing entry as skipped.
+- `applyWaitingIndexRepairPlan` reports invalid action type and invalid runId as structured errors.
 - Repair does not wake waiting actions.
+
+Future tests should cover:
+
+- Partial filesystem delete errors if a stable filesystem simulation is added.
+- MemoryStateStore repair APIs if that store ever exposes repair behavior.
 
 ## 15. Open Questions
 

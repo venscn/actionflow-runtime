@@ -21,6 +21,7 @@ import type {
   FlowDefinition,
   FlowRunRecord,
   ProcessedEventRecord,
+  WaitingIndexRepairPlan,
   WaitingRunIndexEntry
 } from "../src/index.js";
 
@@ -1580,6 +1581,302 @@ describe("FileStateStore", () => {
     store.checkHealth();
 
     expect(store.listWaitingActionRuns()).toEqual(before);
+  });
+
+  it("createWaitingIndexRepairPlan returns empty plan for clean health", () => {
+    const store = createStore();
+
+    store.saveFlowRun(createFlowRun("flow-run-1", "waiting"));
+    store.saveActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    const plan = store.createWaitingIndexRepairPlan();
+
+    expect(plan.actions).toEqual([]);
+    expect(plan.skippedIssues).toEqual([]);
+  });
+
+  it("createWaitingIndexRepairPlan creates remove action for missing ActionRun", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    const plan = store.createWaitingIndexRepairPlan();
+
+    expect(plan.actions).toEqual([
+      expect.objectContaining({
+        type: "remove-waiting-index-entry",
+        runId: "flow-run-1:node-1",
+        issueTypes: ["waiting-index-missing-action-run"]
+      })
+    ]);
+    expect(plan.skippedIssues).toEqual([]);
+  });
+
+  it("createWaitingIndexRepairPlan creates remove action for actionRun not waiting", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveActionRun(createActionRun("flow-run-1:node-1", "done"));
+    writeWaitingRunFile(rootDir, "flow-run-1:node-1", JSON.stringify(createWaitingIndexEntry("flow-run-1:node-1", "external-event", { actionId: "echo" })));
+
+    const plan = store.createWaitingIndexRepairPlan();
+
+    expect(plan.actions).toEqual([
+      expect.objectContaining({
+        runId: "flow-run-1:node-1",
+        issueTypes: ["waiting-index-action-run-not-waiting"]
+      })
+    ]);
+  });
+
+  it("createWaitingIndexRepairPlan creates remove action for missing FlowRun", () => {
+    const store = createStore();
+
+    store.saveActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    const plan = store.createWaitingIndexRepairPlan();
+
+    expect(plan.actions).toEqual([
+      expect.objectContaining({
+        runId: "flow-run-1:node-1",
+        issueTypes: ["waiting-index-missing-flow-run"]
+      })
+    ]);
+  });
+
+  it("createWaitingIndexRepairPlan creates remove action for missing flowRunId", () => {
+    const store = createStore();
+
+    store.saveActionRun(createWaitingActionRun("standalone-run", "external-event"));
+    store.indexWaitingActionRun(createWaitingActionRun("standalone-run", "external-event"));
+
+    const plan = store.createWaitingIndexRepairPlan();
+
+    expect(plan.actions).toEqual([
+      expect.objectContaining({
+        runId: "standalone-run",
+        issueTypes: ["waiting-index-missing-flow-run-id"]
+      })
+    ]);
+  });
+
+  it("createWaitingIndexRepairPlan skips waitReason mismatch by default", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveFlowRun(createFlowRun("flow-run-1", "waiting"));
+    store.saveActionRun(createWaitingActionRun("flow-run-1:node-1", "event-a"));
+    writeWaitingRunFile(rootDir, "flow-run-1:node-1", JSON.stringify(createWaitingIndexEntry("flow-run-1:node-1", "event-b")));
+
+    const plan = store.createWaitingIndexRepairPlan();
+
+    expect(plan.actions).toEqual([]);
+    expect(plan.skippedIssues).toEqual([
+      expect.objectContaining({
+        type: "waiting-index-wait-reason-mismatch",
+        runId: "flow-run-1:node-1"
+      })
+    ]);
+  });
+
+  it("createWaitingIndexRepairPlan skips actionId mismatch by default", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveFlowRun(createFlowRun("flow-run-1", "waiting"));
+    store.saveActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event", "action-a"));
+    writeWaitingRunFile(
+      rootDir,
+      "flow-run-1:node-1",
+      JSON.stringify(createWaitingIndexEntry("flow-run-1:node-1", "external-event", { actionId: "action-b" }))
+    );
+
+    const plan = store.createWaitingIndexRepairPlan();
+
+    expect(plan.actions).toEqual([]);
+    expect(plan.skippedIssues).toEqual([
+      expect.objectContaining({
+        type: "waiting-index-action-id-mismatch",
+        runId: "flow-run-1:node-1"
+      })
+    ]);
+  });
+
+  it("createWaitingIndexRepairPlan includeMismatches includes mismatch remove actions", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveFlowRun(createFlowRun("flow-run-1", "waiting"));
+    store.saveFlowRun(createFlowRun("flow-run-2", "waiting"));
+    store.saveActionRun(createWaitingActionRun("flow-run-1:node-1", "event-a"));
+    store.saveActionRun(createWaitingActionRun("flow-run-2:node-1", "external-event", "action-a"));
+    writeWaitingRunFile(rootDir, "flow-run-1:node-1", JSON.stringify(createWaitingIndexEntry("flow-run-1:node-1", "event-b")));
+    writeWaitingRunFile(
+      rootDir,
+      "flow-run-2:node-1",
+      JSON.stringify(createWaitingIndexEntry("flow-run-2:node-1", "external-event", { actionId: "action-b" }))
+    );
+
+    const plan = store.createWaitingIndexRepairPlan({ includeMismatches: true });
+
+    expect(plan.actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          runId: "flow-run-1:node-1",
+          issueTypes: ["waiting-index-wait-reason-mismatch"]
+        }),
+        expect.objectContaining({
+          runId: "flow-run-2:node-1",
+          issueTypes: ["waiting-index-action-id-mismatch"]
+        })
+      ])
+    );
+    expect(plan.skippedIssues).toEqual([]);
+  });
+
+  it("createWaitingIndexRepairPlan merges multiple repairable issues for same runId", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveActionRun(createWaitingActionRun("standalone-run", "event-a", "action-a"));
+    writeWaitingRunFile(rootDir, "standalone-run", JSON.stringify(createWaitingIndexEntry("standalone-run", "event-b", { actionId: "action-b" })));
+
+    const plan = store.createWaitingIndexRepairPlan({ includeMismatches: true });
+
+    expect(plan.actions).toHaveLength(1);
+    expect(plan.actions[0]).toEqual(
+      expect.objectContaining({
+        runId: "standalone-run",
+        issueTypes: expect.arrayContaining([
+          "waiting-index-wait-reason-mismatch",
+          "waiting-index-missing-flow-run-id",
+          "waiting-index-action-id-mismatch"
+        ])
+      })
+    );
+  });
+
+  it("applyWaitingIndexRepairPlan removes waiting index entries", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    const result = store.applyWaitingIndexRepairPlan(store.createWaitingIndexRepairPlan());
+
+    expect(result.removedRunIds).toEqual(["flow-run-1:node-1"]);
+    expect(result.skippedRunIds).toEqual([]);
+    expect(result.errors).toEqual([]);
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
+
+  it("applyWaitingIndexRepairPlan does not delete ActionRun", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveActionRun(createActionRun("flow-run-1:node-1", "done"));
+    writeWaitingRunFile(rootDir, "flow-run-1:node-1", JSON.stringify(createWaitingIndexEntry("flow-run-1:node-1", "external-event", { actionId: "echo" })));
+
+    store.applyWaitingIndexRepairPlan(store.createWaitingIndexRepairPlan());
+
+    expect(store.getActionRun("flow-run-1:node-1")).toEqual(createActionRun("flow-run-1:node-1", "done"));
+  });
+
+  it("applyWaitingIndexRepairPlan does not delete FlowRun", () => {
+    const store = createStore();
+
+    store.saveFlowRun(createFlowRun("flow-run-1", "waiting"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    store.applyWaitingIndexRepairPlan(store.createWaitingIndexRepairPlan());
+
+    expect(store.getFlowRun("flow-run-1")).toEqual(createFlowRun("flow-run-1", "waiting"));
+  });
+
+  it("applyWaitingIndexRepairPlan is explicit and checkHealth remains read-only", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    store.checkHealth();
+    expect(store.listWaitingActionRuns()).toHaveLength(1);
+
+    const plan = store.createWaitingIndexRepairPlan();
+    expect(store.listWaitingActionRuns()).toHaveLength(1);
+
+    store.applyWaitingIndexRepairPlan(plan);
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
+
+  it("applyWaitingIndexRepairPlan handles already missing entry as skipped", () => {
+    const store = createStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+    const plan = store.createWaitingIndexRepairPlan();
+    store.removeWaitingActionRun("flow-run-1:node-1");
+
+    const result = store.applyWaitingIndexRepairPlan(plan);
+
+    expect(result.removedRunIds).toEqual([]);
+    expect(result.skippedRunIds).toEqual(["flow-run-1:node-1"]);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("applyWaitingIndexRepairPlan records invalid action type as error", () => {
+    const store = createStore();
+    const plan = {
+      createdAt: new Date().toISOString(),
+      actions: [
+        {
+          type: "bad-action",
+          runId: "flow-run-1:node-1",
+          reason: "bad",
+          issueTypes: []
+        }
+      ],
+      skippedIssues: []
+    } as unknown as WaitingIndexRepairPlan;
+
+    const result = store.applyWaitingIndexRepairPlan(plan);
+
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        runId: "flow-run-1:node-1",
+        message: expect.stringContaining("Invalid repair action type")
+      })
+    ]);
+  });
+
+  it("applyWaitingIndexRepairPlan records invalid runId as error", () => {
+    const store = createStore();
+    const plan = {
+      createdAt: new Date().toISOString(),
+      actions: [
+        {
+          type: "remove-waiting-index-entry",
+          runId: "",
+          reason: "bad",
+          issueTypes: []
+        }
+      ],
+      skippedIssues: []
+    } as unknown as WaitingIndexRepairPlan;
+
+    const result = store.applyWaitingIndexRepairPlan(plan);
+
+    expect(result.errors).toEqual([
+      expect.objectContaining({
+        runId: "",
+        message: expect.stringContaining("runId")
+      })
+    ]);
+  });
+
+  it("applyWaitingIndexRepairPlan does not wake waiting action", () => {
+    const store = createStore();
+    const actionRun = createWaitingActionRun("flow-run-1:node-1", "external-event");
+
+    store.saveActionRun(actionRun);
+    store.indexWaitingActionRun(actionRun);
+
+    store.applyWaitingIndexRepairPlan(store.createWaitingIndexRepairPlan());
+
+    expect(store.getActionRun("flow-run-1:node-1")).toEqual(actionRun);
   });
 
   it("checkHealth propagates invalid pending manifest errors", () => {
