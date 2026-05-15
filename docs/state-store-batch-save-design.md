@@ -135,7 +135,8 @@ Phase 3:
 
 - Design FileStateStore staging / commit marker behavior.
 - See [FileStateStore Staging Design](file-state-store-staging-design.md) for the proposed staging / commit marker design.
-- Batch id and manifest helpers are separate groundwork for this phase; FileStateStore does not write staging manifests yet.
+- Batch id and manifest helpers are separate groundwork for this phase.
+- Pending manifest writing exists as groundwork, but staging records and commit marker behavior remain unimplemented.
 
 Status: not implemented.
 

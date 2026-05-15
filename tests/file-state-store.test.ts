@@ -1,9 +1,17 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
-import { ActionFlowRuntime, createEnvelope, FileStateStore, safeFileName, supportsRunBatch } from "../src/index.js";
+import {
+  ActionFlowRuntime,
+  createEnvelope,
+  FileStateStore,
+  parseBatchManifest,
+  safeFileName,
+  supportsRunBatch
+} from "../src/index.js";
+import type { FileStoreBatchManifest } from "../src/index.js";
 import type { ActionRunRecord, FlowRunRecord } from "../src/index.js";
 
 describe("FileStateStore", () => {
@@ -259,6 +267,81 @@ describe("FileStateStore", () => {
     });
   });
 
+  it("saveRunBatch writes a pending batch manifest", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const flowRun = createFlowRun("flow-run-1", "running");
+    const actionRun = createActionRun("flow-run-1:node-1", "done");
+
+    store.saveRunBatch({
+      flowRun,
+      actionRuns: [actionRun]
+    });
+
+    const manifest = readOnlyPendingBatchManifest(rootDir);
+
+    expect(manifest).toMatchObject({
+      status: "pending",
+      flowRunId: "flow-run-1",
+      actionRunIds: ["flow-run-1:node-1"]
+    });
+    expect(manifest.targetFiles).toEqual([
+      `flow-runs/${safeFileName("flow-run-1")}.json`,
+      `action-runs/${safeFileName("flow-run-1:node-1")}.json`
+    ]);
+  });
+
+  it("saveRunBatch writes pending manifest before records", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const invalidActionRun = { ...createActionRun("flow-run-1:node-1", "ready"), state: undefined };
+
+    expect(() =>
+      store.saveRunBatch({
+        flowRun: createFlowRun("flow-run-1", "running"),
+        actionRuns: [invalidActionRun]
+      })
+    ).toThrow("$.state");
+
+    expect(listPendingBatchManifestFiles(rootDir)).toHaveLength(1);
+  });
+
+  it("saveRunBatch manifest uses safe paths for unsafe ids", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const unsafeFlowRunId = 'a/b\\c:d*e?f"g<h>i|j';
+    const unsafeActionRunId = 'x/y\\z:q*r?s"t<u>v|w';
+
+    store.saveRunBatch({
+      flowRun: createFlowRun(unsafeFlowRunId, "running"),
+      actionRuns: [createActionRun(unsafeActionRunId, "done")]
+    });
+
+    const manifest = readOnlyPendingBatchManifest(rootDir);
+
+    for (const targetFile of manifest.targetFiles) {
+      const segments = targetFile.split("/");
+
+      expect(segments).not.toContain("..");
+      for (const segment of segments) {
+        expect(segment).not.toMatch(/[\\:*?"<>|]/);
+      }
+    }
+  });
+
+  it("clear removes batch manifests but not rootDir", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    expect(listPendingBatchManifestFiles(rootDir)).toHaveLength(1);
+
+    store.clear();
+
+    expect(existsSync(rootDir)).toBe(true);
+    expect(listPendingBatchManifestFiles(rootDir)).toEqual([]);
+  });
+
   function createStore(): FileStateStore {
     return createStoreWithRoot().store;
   }
@@ -297,4 +380,24 @@ function writeManagedFile(rootDir: string, subdir: string, id: string, content: 
   const dir = path.join(rootDir, subdir);
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, `${safeFileName(id)}.json`), content, "utf8");
+}
+
+function listPendingBatchManifestFiles(rootDir: string): string[] {
+  const dir = path.join(rootDir, "batches", "pending");
+
+  if (!existsSync(dir)) {
+    return [];
+  }
+
+  return readdirSync(dir)
+    .filter((fileName) => fileName.endsWith(".json"))
+    .map((fileName) => path.join(dir, fileName));
+}
+
+function readOnlyPendingBatchManifest(rootDir: string): FileStoreBatchManifest {
+  const files = listPendingBatchManifestFiles(rootDir);
+
+  expect(files).toHaveLength(1);
+
+  return parseBatchManifest(JSON.parse(readFileSync(files[0], "utf8")) as unknown);
 }

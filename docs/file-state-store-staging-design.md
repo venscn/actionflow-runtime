@@ -151,6 +151,8 @@ Phase 3:
 
 - Make FileStateStore write batch manifests in `batches/pending/`.
 
+Status: partially implemented. FileStateStore writes a pending batch manifest before best-effort record writes. It does not write staging records, committed markers, or failed markers yet. The pending manifest is diagnostic only and does not change `restoreRun` behavior.
+
 Phase 4:
 
 - Make FileStateStore validate staging records before moving them.

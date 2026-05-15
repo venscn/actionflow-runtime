@@ -12,6 +12,7 @@ import path from "node:path";
 
 import type { BatchStateStore, StateStoreRunBatch } from "./state-store.js";
 import type { ActionRunRecord, FlowRunRecord } from "./types.js";
+import { createBatchManifest, createBatchTargetFiles } from "./file-state-store-batch.js";
 import { createEnvelope, parseEnvelope, safeFileName } from "./file-state-store-utils.js";
 
 export interface FileStateStoreOptions {
@@ -22,6 +23,8 @@ export class FileStateStore implements BatchStateStore {
   private readonly rootDir: string;
   private readonly actionRunsDir: string;
   private readonly flowRunsDir: string;
+  private readonly batchesDir: string;
+  private readonly pendingBatchesDir: string;
 
   constructor(options: FileStateStoreOptions) {
     if (typeof options.rootDir !== "string" || options.rootDir.length === 0) {
@@ -31,6 +34,8 @@ export class FileStateStore implements BatchStateStore {
     this.rootDir = path.resolve(options.rootDir);
     this.actionRunsDir = path.join(this.rootDir, "action-runs");
     this.flowRunsDir = path.join(this.rootDir, "flow-runs");
+    this.batchesDir = path.join(this.rootDir, "batches");
+    this.pendingBatchesDir = path.join(this.batchesDir, "pending");
   }
 
   saveActionRun(run: ActionRunRecord): void {
@@ -51,6 +56,8 @@ export class FileStateStore implements BatchStateStore {
   }
 
   saveRunBatch(batch: StateStoreRunBatch): void {
+    this.writePendingBatchManifest(batch);
+
     if (batch.flowRun) {
       this.saveFlowRun(batch.flowRun);
     }
@@ -79,6 +86,7 @@ export class FileStateStore implements BatchStateStore {
   clear(): void {
     this.clearManagedDirectory(this.actionRunsDir);
     this.clearManagedDirectory(this.flowRunsDir);
+    this.clearManagedDirectory(this.batchesDir);
   }
 
   private ensureManagedDirectory(dir: string): void {
@@ -95,9 +103,35 @@ export class FileStateStore implements BatchStateStore {
     this.ensureManagedDirectory(dir);
 
     const targetPath = this.recordPath(dir, id);
-    const tempPath = path.join(dir, `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`);
     const envelope = createEnvelope(kind, data);
-    const content = `${JSON.stringify(envelope, null, 2)}\n`;
+
+    this.writeJsonFile(targetPath, envelope);
+  }
+
+  private writePendingBatchManifest(batch: StateStoreRunBatch): void {
+    const actionRunIds = (batch.actionRuns ?? []).map(actionRunKey);
+    const manifest = createBatchManifest({
+      status: "pending",
+      flowRunId: batch.flowRun?.id,
+      actionRunIds,
+      targetFiles: createBatchTargetFiles({
+        flowRunId: batch.flowRun?.id,
+        actionRunIds
+      })
+    });
+    const targetPath = path.join(this.pendingBatchesDir, `${safeFileName(manifest.batchId)}.json`);
+
+    this.ensureManagedDirectory(this.pendingBatchesDir);
+    this.writeJsonFile(targetPath, manifest);
+  }
+
+  private writeJsonFile(targetPath: string, data: unknown): void {
+    const dir = path.dirname(targetPath);
+
+    this.ensureManagedDirectory(dir);
+
+    const tempPath = path.join(dir, `.${path.basename(targetPath)}.${process.pid}.${Date.now()}.tmp`);
+    const content = `${JSON.stringify(data, null, 2)}\n`;
 
     try {
       writeFileSync(tempPath, content, "utf8");
