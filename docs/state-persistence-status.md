@@ -19,6 +19,8 @@ Current implemented pieces:
 - `listPendingBatches` pending manifest inspection.
 - Committed marker writing.
 - `listCommittedBatches` committed marker inspection.
+- Failed marker writing.
+- `listFailedBatches` failed marker inspection.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -34,7 +36,6 @@ The following are not implemented:
 - EventTriggerDefinition persistence.
 - Database stores.
 - Transaction / atomic multi-file batch save.
-- Failed marker.
 - Rollback.
 - Atomic multi-file batch recovery.
 - Schema migration.
@@ -73,6 +74,7 @@ Known risks:
 - Partial write risk still exists for FileStateStore.
 - Pending manifests help diagnose batch writes but do not prevent partial writes.
 - Committed markers improve inspection but do not make writes atomic.
+- Failed markers improve inspection but do not repair partial writes.
 - `listPendingBatches` can report invalid manifests but does not repair them.
 - Corrupted JSON fails reads and lists.
 - There is no migration story yet.
@@ -85,8 +87,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: failed marker design / implementation.
-- Phase B: store health check API.
+- Phase A: store health check API.
+- Phase B: rollback design evaluation.
 - Phase C: waiting index design.
 - Phase D: event recovery design.
 
@@ -96,7 +98,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- FileStateStore failed marker design / implementation.
 - FileStateStore store health check API.
+- FileStateStore rollback design evaluation.
 
-Recommendation: start with FileStateStore failed marker design / implementation. Pending manifests, staging records, and committed markers can now describe successful batch attempts, but failed markers are still needed before store health checks can clearly distinguish incomplete and failed batches.
+Recommendation: start with FileStateStore store health check API. Pending, committed, and failed markers can now describe batch attempts, but there is still no inspection layer that summarizes incomplete, committed, and failed batches for callers.

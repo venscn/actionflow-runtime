@@ -34,6 +34,11 @@ export interface FileStateStoreCommittedBatch {
   manifest: FileStoreBatchManifest;
 }
 
+export interface FileStateStoreFailedBatch {
+  path: string;
+  manifest: FileStoreBatchManifest;
+}
+
 export class FileStateStore implements BatchStateStore {
   private readonly rootDir: string;
   private readonly actionRunsDir: string;
@@ -41,6 +46,7 @@ export class FileStateStore implements BatchStateStore {
   private readonly batchesDir: string;
   private readonly pendingBatchesDir: string;
   private readonly committedBatchesDir: string;
+  private readonly failedBatchesDir: string;
 
   constructor(options: FileStateStoreOptions) {
     if (typeof options.rootDir !== "string" || options.rootDir.length === 0) {
@@ -53,6 +59,7 @@ export class FileStateStore implements BatchStateStore {
     this.batchesDir = path.join(this.rootDir, "batches");
     this.pendingBatchesDir = path.join(this.batchesDir, "pending");
     this.committedBatchesDir = path.join(this.batchesDir, "committed");
+    this.failedBatchesDir = path.join(this.batchesDir, "failed");
   }
 
   saveActionRun(run: ActionRunRecord): void {
@@ -75,17 +82,27 @@ export class FileStateStore implements BatchStateStore {
   saveRunBatch(batch: StateStoreRunBatch): void {
     const manifest = this.writePendingBatchManifest(batch);
 
-    this.writeAndValidateStagingRecords(batch, manifest);
+    try {
+      this.writeAndValidateStagingRecords(batch, manifest);
 
-    if (batch.flowRun) {
-      this.saveFlowRun(batch.flowRun);
+      if (batch.flowRun) {
+        this.saveFlowRun(batch.flowRun);
+      }
+
+      for (const actionRun of batch.actionRuns ?? []) {
+        this.saveActionRun(actionRun);
+      }
+
+      this.writeCommittedBatchMarker(manifest);
+    } catch (error) {
+      try {
+        this.writeFailedBatchMarker(manifest);
+      } catch {
+        // Preserve the original batch failure. Failed markers are best-effort diagnostics.
+      }
+
+      throw error;
     }
-
-    for (const actionRun of batch.actionRuns ?? []) {
-      this.saveActionRun(actionRun);
-    }
-
-    this.writeCommittedBatchMarker(manifest);
   }
 
   getFlowRun(flowRunId: string): FlowRunRecord | undefined {
@@ -102,6 +119,10 @@ export class FileStateStore implements BatchStateStore {
 
   listCommittedBatches(): readonly FileStateStoreCommittedBatch[] {
     return this.listBatchManifests(this.committedBatchesDir, "committed");
+  }
+
+  listFailedBatches(): readonly FileStateStoreFailedBatch[] {
+    return this.listBatchManifests(this.failedBatchesDir, "failed");
   }
 
   deleteActionRun(runId: string): boolean {
@@ -167,6 +188,20 @@ export class FileStateStore implements BatchStateStore {
     const targetPath = path.join(this.committedBatchesDir, `${safeFileName(manifest.batchId)}.json`);
 
     this.ensureManagedDirectory(this.committedBatchesDir);
+    this.writeJsonFile(targetPath, manifest);
+  }
+
+  private writeFailedBatchMarker(pendingManifest: FileStoreBatchManifest): void {
+    const manifest = createBatchManifest({
+      batchId: pendingManifest.batchId,
+      status: "failed",
+      flowRunId: pendingManifest.flowRunId,
+      actionRunIds: pendingManifest.actionRunIds,
+      targetFiles: pendingManifest.targetFiles
+    });
+    const targetPath = path.join(this.failedBatchesDir, `${safeFileName(manifest.batchId)}.json`);
+
+    this.ensureManagedDirectory(this.failedBatchesDir);
     this.writeJsonFile(targetPath, manifest);
   }
 
@@ -257,7 +292,7 @@ export class FileStateStore implements BatchStateStore {
 
   private listBatchManifests(
     dir: string,
-    expectedStatus: "pending" | "committed"
+    expectedStatus: "pending" | "committed" | "failed"
   ): Array<{ path: string; manifest: FileStoreBatchManifest }> {
     this.assertManagedDirectory(dir);
 

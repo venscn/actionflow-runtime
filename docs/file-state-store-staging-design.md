@@ -1,6 +1,6 @@
 # FileStateStore Staging Design
 
-This document tracks the staging directory and commit marker approach for FileStateStore batch writes. Pending manifests, staging record writes, and committed marker writes are partially implemented; failed markers, rollback, and durable recovery are not implemented.
+This document tracks the staging directory and commit marker approach for FileStateStore batch writes. Pending manifests, staging record writes, committed marker writes, and failed marker writes are partially implemented; rollback and durable recovery are not implemented.
 
 ## 1. Problem
 
@@ -125,7 +125,7 @@ Future APIs could include:
 - `inspectBatches()`
 - `checkStoreHealth()`
 
-FileStateStore currently exposes `listPendingBatches()` and `listCommittedBatches()` for manual inspection. They read and parse batch manifests without mutating them. They do not automatically recover, mark pending batches as failed, or change runtime execution. Invalid or corrupted manifests are reported as errors.
+FileStateStore currently exposes `listPendingBatches()`, `listCommittedBatches()`, and `listFailedBatches()` for manual inspection. They read and parse batch manifests without mutating them. They do not automatically recover, roll back writes, or change runtime execution. Invalid or corrupted manifests are reported as errors.
 
 If a pending batch is found, the runtime should not automatically recover it. Tooling can report incomplete batches and let the host or user decide what to do.
 
@@ -169,15 +169,20 @@ Status: partially implemented. FileStateStore writes a committed marker after su
 
 Phase 6:
 
+- Add failed marker support.
+
+Status: partially implemented. FileStateStore tries to write a failed marker after a batch failure once the pending manifest exists and exposes `listFailedBatches()` for read-only inspection. The failed marker is best-effort and diagnostic only; it does not roll back partial writes, automatically recover, change `restoreRun`, or make the batch atomic.
+
+Phase 7:
+
 - Add store health inspection helper.
 
-Status: partially implemented for pending manifests only. `FileStateStore.listPendingBatches()` can list and parse pending batch manifests, but broader store health checks are not implemented.
+Status: partially implemented for batch manifest inspection only. `FileStateStore.listPendingBatches()`, `listCommittedBatches()`, and `listFailedBatches()` can list and parse batch manifests, but broader store health checks are not implemented.
 
 ## 11. Tests Needed
 
 Future tests should cover:
 
-- Failed batch leaves pending/failed marker.
 - Target write failure surfaces an error.
 - `restoreRun` after committed batch works.
 - Pending batch is detectable.
