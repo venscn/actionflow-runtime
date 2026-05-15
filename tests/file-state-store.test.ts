@@ -8,6 +8,7 @@ import {
   createEnvelope,
   FileStateStore,
   parseBatchManifest,
+  parseEnvelope,
   safeFileName,
   supportsRunBatch
 } from "../src/index.js";
@@ -342,6 +343,118 @@ describe("FileStateStore", () => {
     expect(listPendingBatchManifestFiles(rootDir)).toEqual([]);
   });
 
+  it("saveRunBatch writes staging records for FlowRun and ActionRuns", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const flowRun = createFlowRun("flow-run-1", "running");
+    const firstActionRun = createActionRun("flow-run-1:node-1", "done");
+    const secondActionRun = createActionRun("flow-run-1:node-2", "ready");
+
+    store.saveRunBatch({
+      flowRun,
+      actionRuns: [firstActionRun, secondActionRun]
+    });
+
+    const manifest = readOnlyPendingBatchManifest(rootDir);
+    const recordsDir = pendingBatchRecordsDir(rootDir, manifest);
+    const flowRunPath = path.join(recordsDir, "flow-runs", `${safeFileName("flow-run-1")}.json`);
+    const firstActionRunPath = path.join(recordsDir, "action-runs", `${safeFileName("flow-run-1:node-1")}.json`);
+    const secondActionRunPath = path.join(recordsDir, "action-runs", `${safeFileName("flow-run-1:node-2")}.json`);
+
+    expect(parseEnvelope(readJson(flowRunPath), "flowRun").data).toEqual(flowRun);
+    expect(parseEnvelope(readJson(firstActionRunPath), "actionRun").data).toEqual(firstActionRun);
+    expect(parseEnvelope(readJson(secondActionRunPath), "actionRun").data).toEqual(secondActionRun);
+  });
+
+  it("saveRunBatch validates staging records before final writes", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const invalidActionRun = { ...createActionRun("flow-run-1:node-1", "ready"), state: undefined };
+
+    expect(() =>
+      store.saveRunBatch({
+        flowRun: createFlowRun("flow-run-1", "running"),
+        actionRuns: [invalidActionRun]
+      })
+    ).toThrow("$.state");
+
+    const manifest = readOnlyPendingBatchManifest(rootDir);
+    const recordsDir = pendingBatchRecordsDir(rootDir, manifest);
+
+    expect(store.getActionRun("flow-run-1:node-1")).toBeUndefined();
+    expect(existsSync(path.join(recordsDir, "action-runs", `${safeFileName("flow-run-1:node-1")}.json`))).toBe(false);
+  });
+
+  it("staging records use safe paths for unsafe ids", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const unsafeFlowRunId = 'a/b\\c:d*e?f"g<h>i|j';
+    const unsafeActionRunId = 'x/y\\z:q*r?s"t<u>v|w';
+
+    store.saveRunBatch({
+      flowRun: createFlowRun(unsafeFlowRunId, "running"),
+      actionRuns: [createActionRun(unsafeActionRunId, "done")]
+    });
+
+    const manifest = readOnlyPendingBatchManifest(rootDir);
+    const recordsDir = pendingBatchRecordsDir(rootDir, manifest);
+    const recordFiles = listStagingRecordFiles(recordsDir);
+
+    expect(recordFiles).toHaveLength(2);
+    for (const recordFile of recordFiles) {
+      const relativePath = path.relative(recordsDir, recordFile);
+      const segments = relativePath.split(path.sep);
+
+      expect(segments).not.toContain("..");
+      for (const segment of segments) {
+        expect(segment).not.toMatch(/[\\:*?"<>|]/);
+      }
+    }
+
+    expect(parseEnvelope(readJson(path.join(recordsDir, "flow-runs", `${safeFileName(unsafeFlowRunId)}.json`)), "flowRun").data).toMatchObject({
+      id: unsafeFlowRunId
+    });
+    expect(
+      parseEnvelope(readJson(path.join(recordsDir, "action-runs", `${safeFileName(unsafeActionRunId)}.json`)), "actionRun")
+        .data
+    ).toMatchObject({
+      runId: unsafeActionRunId
+    });
+  });
+
+  it("clear removes staging records and pending manifests", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    const manifest = readOnlyPendingBatchManifest(rootDir);
+    const recordsDir = pendingBatchRecordsDir(rootDir, manifest);
+
+    expect(existsSync(recordsDir)).toBe(true);
+    expect(listStagingRecordFiles(recordsDir)).toHaveLength(2);
+
+    store.clear();
+
+    expect(existsSync(rootDir)).toBe(true);
+    expect(store.listPendingBatches()).toEqual([]);
+    expect(existsSync(recordsDir)).toBe(false);
+  });
+
+  it("listPendingBatches still lists pending manifests after staging records are added", () => {
+    const store = createStore();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    const [batch] = store.listPendingBatches();
+
+    expect(batch.manifest.status).toBe("pending");
+    expect(batch.manifest.flowRunId).toBe("flow-run-1");
+    expect(batch.manifest.actionRunIds).toEqual(["flow-run-1:node-1"]);
+  });
+
   it("listPendingBatches returns an empty list when no pending directory exists", () => {
     const store = createStore();
 
@@ -491,4 +604,30 @@ function readOnlyPendingBatchManifest(rootDir: string): FileStoreBatchManifest {
   expect(files).toHaveLength(1);
 
   return parseBatchManifest(JSON.parse(readFileSync(files[0], "utf8")) as unknown);
+}
+
+function pendingBatchRecordsDir(rootDir: string, manifest: FileStoreBatchManifest): string {
+  return path.join(rootDir, "batches", "pending", `${safeFileName(manifest.batchId)}-records`);
+}
+
+function readJson(filePath: string): unknown {
+  return JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+}
+
+function listStagingRecordFiles(recordsDir: string): string[] {
+  if (!existsSync(recordsDir)) {
+    return [];
+  }
+
+  return ["flow-runs", "action-runs"].flatMap((subdir) => {
+    const dir = path.join(recordsDir, subdir);
+
+    if (!existsSync(dir)) {
+      return [];
+    }
+
+    return readdirSync(dir)
+      .filter((fileName) => fileName.endsWith(".json"))
+      .map((fileName) => path.join(dir, fileName));
+  });
 }

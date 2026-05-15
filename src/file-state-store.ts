@@ -66,7 +66,9 @@ export class FileStateStore implements BatchStateStore {
   }
 
   saveRunBatch(batch: StateStoreRunBatch): void {
-    this.writePendingBatchManifest(batch);
+    const manifest = this.writePendingBatchManifest(batch);
+
+    this.writeAndValidateStagingRecords(batch, manifest);
 
     if (batch.flowRun) {
       this.saveFlowRun(batch.flowRun);
@@ -139,7 +141,7 @@ export class FileStateStore implements BatchStateStore {
     this.writeJsonFile(targetPath, envelope);
   }
 
-  private writePendingBatchManifest(batch: StateStoreRunBatch): void {
+  private writePendingBatchManifest(batch: StateStoreRunBatch): FileStoreBatchManifest {
     const actionRunIds = (batch.actionRuns ?? []).map(actionRunKey);
     const manifest = createBatchManifest({
       status: "pending",
@@ -154,6 +156,40 @@ export class FileStateStore implements BatchStateStore {
 
     this.ensureManagedDirectory(this.pendingBatchesDir);
     this.writeJsonFile(targetPath, manifest);
+
+    return manifest;
+  }
+
+  private writeAndValidateStagingRecords(batch: StateStoreRunBatch, manifest: FileStoreBatchManifest): void {
+    const recordsDir = this.pendingBatchRecordsDir(manifest.batchId);
+    const stagedRecords: Array<{ path: string; kind: "actionRun" | "flowRun" }> = [];
+
+    if (batch.flowRun) {
+      const flowRunsDir = path.join(recordsDir, "flow-runs");
+      this.writeRecord(flowRunsDir, batch.flowRun.id, "flowRun", batch.flowRun);
+      stagedRecords.push({
+        path: this.recordPath(flowRunsDir, batch.flowRun.id),
+        kind: "flowRun"
+      });
+    }
+
+    for (const actionRun of batch.actionRuns ?? []) {
+      const actionRunsDir = path.join(recordsDir, "action-runs");
+      const actionRunId = actionRunKey(actionRun);
+      this.writeRecord(actionRunsDir, actionRunId, "actionRun", actionRun);
+      stagedRecords.push({
+        path: this.recordPath(actionRunsDir, actionRunId),
+        kind: "actionRun"
+      });
+    }
+
+    for (const stagedRecord of stagedRecords) {
+      this.readRecordFile(stagedRecord.path, stagedRecord.kind);
+    }
+  }
+
+  private pendingBatchRecordsDir(batchId: string): string {
+    return path.join(this.pendingBatchesDir, `${safeFileName(batchId)}-records`);
   }
 
   private writeJsonFile(targetPath: string, data: unknown): void {

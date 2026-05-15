@@ -15,6 +15,7 @@ Current implemented pieces:
 - FileStateStore best-effort `saveRunBatch`.
 - Runtime optional batch save path.
 - Pending batch manifest writing.
+- Pending staging record writes and validation.
 - `listPendingBatches` pending manifest inspection.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
@@ -33,7 +34,6 @@ The following are not implemented:
 - Transaction / atomic multi-file batch save.
 - Committed marker.
 - Failed marker.
-- Staging records.
 - Atomic multi-file batch recovery.
 - Schema migration.
 - Production concurrency safety.
@@ -82,8 +82,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: FileStateStore staging records design / implementation.
-- Phase B: commit marker design / implementation.
+- Phase A: commit marker design / implementation.
+- Phase B: failed marker design / implementation.
 - Phase C: store health check API.
 - Phase D: waiting index design.
 - Phase E: event recovery design.
@@ -94,7 +94,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- FileStateStore staging records design / implementation.
 - FileStateStore commit marker design / implementation.
+- FileStateStore failed marker design / implementation.
 
-Recommendation: start with FileStateStore staging records design / implementation. Pending manifests can now diagnose batch attempts, but staging records are still needed before commit markers can provide useful batch completeness checks.
+Recommendation: start with FileStateStore commit marker design / implementation. Pending manifests and staging records can now describe and validate batch attempts, but commit markers are still needed before batch completeness checks become useful.

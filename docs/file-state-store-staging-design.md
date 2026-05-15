@@ -1,6 +1,6 @@
 # FileStateStore Staging Design
 
-This document designs a future staging directory and commit marker approach for FileStateStore batch writes. It is not implemented yet.
+This document tracks the staging directory and commit marker approach for FileStateStore batch writes. Pending manifests and staging record writes are partially implemented; commit markers, failed markers, rollback, and durable recovery are not implemented.
 
 ## 1. Problem
 
@@ -147,17 +147,19 @@ Phase 2:
 
 - Add `batchId` helper and manifest types.
 
-Status: implemented as helper/types only. FileStateStore does not write pending manifests yet.
+Status: implemented as helper/types.
 
 Phase 3:
 
 - Make FileStateStore write batch manifests in `batches/pending/`.
 
-Status: partially implemented. FileStateStore writes a pending batch manifest before best-effort record writes. It does not write staging records, committed markers, or failed markers yet. The pending manifest is diagnostic only and does not change `restoreRun` behavior.
+Status: partially implemented. FileStateStore writes a pending batch manifest before staging and best-effort record writes. The pending manifest is diagnostic only and does not change `restoreRun` behavior.
 
 Phase 4:
 
-- Make FileStateStore validate staging records before moving them.
+- Make FileStateStore validate staging records before target writes.
+
+Status: partially implemented. FileStateStore writes FlowRun and ActionRun envelopes into pending staging record directories and parses them before best-effort target writes. It still does not move records through a complete staging commit protocol, write committed markers, write failed markers, perform rollback, or change `restoreRun` behavior.
 
 Phase 5:
 
@@ -175,7 +177,6 @@ Future tests should cover:
 
 - Successful batch creates committed marker.
 - Failed batch leaves pending/failed marker.
-- Corrupted staging record fails.
 - Target write failure surfaces an error.
 - `restoreRun` after committed batch works.
 - Pending batch is detectable.
