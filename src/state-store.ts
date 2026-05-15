@@ -99,10 +99,11 @@ export function supportsProcessedEvents(store: StateStore): store is ProcessedEv
   );
 }
 
-export class MemoryStateStore implements BatchStateStore, WaitingIndexStore {
+export class MemoryStateStore implements BatchStateStore, WaitingIndexStore, ProcessedEventStore {
   private readonly actionRuns = new Map<string, ActionRunRecord>();
   private readonly flowRuns = new Map<string, FlowRunRecord>();
   private readonly waitingRuns = new Map<string, WaitingRunIndexEntry>();
+  private readonly processedEvents = new Map<string, ProcessedEventRecord>();
 
   saveActionRun(run: ActionRunRecord): void {
     this.actionRuns.set(actionRunKey(run), run);
@@ -140,6 +141,7 @@ export class MemoryStateStore implements BatchStateStore, WaitingIndexStore {
     this.actionRuns.clear();
     this.flowRuns.clear();
     this.waitingRuns.clear();
+    this.processedEvents.clear();
   }
 
   saveRunBatch(batch: StateStoreRunBatch): void {
@@ -192,6 +194,23 @@ export class MemoryStateStore implements BatchStateStore, WaitingIndexStore {
       .filter((entry) => matchesWaitingFilter(entry, filter))
       .sort((left, right) => left.runId.localeCompare(right.runId));
   }
+
+  getProcessedEvent(eventId: string): ProcessedEventRecord | undefined {
+    return this.processedEvents.get(eventId);
+  }
+
+  saveProcessedEvent(record: ProcessedEventRecord): void {
+    validateProcessedEventRecord(record);
+    this.processedEvents.set(record.eventId, record);
+  }
+
+  listProcessedEvents(): readonly ProcessedEventRecord[] {
+    return [...this.processedEvents.values()].sort((left, right) => left.eventId.localeCompare(right.eventId));
+  }
+
+  deleteProcessedEvent(eventId: string): boolean {
+    return this.processedEvents.delete(eventId);
+  }
 }
 
 function actionRunKey(run: ActionRunRecord): string {
@@ -225,4 +244,50 @@ function matchesWaitingFilter(entry: WaitingRunIndexEntry, filter: WaitingRunFil
   }
 
   return true;
+}
+
+function validateProcessedEventRecord(record: ProcessedEventRecord): void {
+  if (typeof record.eventId !== "string" || record.eventId.length === 0) {
+    throw new Error("eventId is required");
+  }
+
+  if (typeof record.eventName !== "string" || record.eventName.length === 0) {
+    throw new Error("eventName is required");
+  }
+
+  if (!isProcessedEventStatus(record.status)) {
+    throw new Error("Invalid processed event status");
+  }
+
+  if (typeof record.firstSeenAt !== "string" || record.firstSeenAt.length === 0) {
+    throw new Error("firstSeenAt is required");
+  }
+
+  if (typeof record.updatedAt !== "string" || record.updatedAt.length === 0) {
+    throw new Error("updatedAt is required");
+  }
+
+  if (!Number.isInteger(record.attemptCount) || record.attemptCount < 0) {
+    throw new Error("attemptCount must be a non-negative integer");
+  }
+
+  if (!isNonEmptyStringArray(record.matchedRunIds)) {
+    throw new Error("matchedRunIds must be an array of non-empty strings");
+  }
+
+  if (!isNonEmptyStringArray(record.recoveredFlowRunIds)) {
+    throw new Error("recoveredFlowRunIds must be an array of non-empty strings");
+  }
+
+  if (record.error !== undefined && typeof record.error !== "string") {
+    throw new Error("error must be a string");
+  }
+}
+
+function isProcessedEventStatus(status: unknown): status is ProcessedEventStatus {
+  return status === "started" || status === "completed" || status === "failed";
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string" && item.length > 0);
 }

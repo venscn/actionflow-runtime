@@ -31,6 +31,7 @@ Current implemented pieces:
 - Event Recovery resume policy design.
 - Processed Event ID design.
 - Processed Event ID store types.
+- MemoryStateStore processed event id.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -40,7 +41,6 @@ Current implemented pieces:
 The following are not implemented:
 
 - Durable recovery guarantee.
-- MemoryStateStore processed event id.
 - FileStateStore processed event id.
 - Runtime processed event integration.
 - `recoverWaitingRuns`.
@@ -104,8 +104,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: MemoryStateStore processed event id.
-- Phase B: FileStateStore processed event id.
+- Phase A: FileStateStore processed event id.
+- Phase B: Runtime processed event integration.
 - Phase C: `recoverWaitingRuns` match/preview integration.
 - Phase D: Explicit tick recovery implementation.
 
@@ -115,8 +115,8 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- MemoryStateStore processed event id.
 - FileStateStore processed event id.
+- Runtime processed event integration.
 - `recoverWaitingRuns` match/preview integration.
 
-Recommendation: start with MemoryStateStore processed event id. The optional types and support guard now exist, but MemoryStateStore/FileStateStore storage, runtime integration, `recoverWaitingRuns`, automatic wakeup, exactly-once behavior, and durable recovery are still not implemented.
+Recommendation: start with FileStateStore processed event id. MemoryStateStore storage now exists, but FileStateStore storage, runtime integration, `recoverWaitingRuns`, automatic wakeup, exactly-once behavior, and durable recovery are still not implemented.

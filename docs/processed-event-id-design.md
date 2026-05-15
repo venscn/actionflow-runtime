@@ -85,13 +85,13 @@ interface ProcessedEventStore extends StateStore {
 }
 ```
 
-`ProcessedEventRecord`, `ProcessedEventStore`, and `supportsProcessedEvents(store)` are implemented as type-level groundwork.
+`ProcessedEventRecord`, `ProcessedEventStore`, and `supportsProcessedEvents(store)` are implemented. MemoryStateStore processed event id storage is implemented.
 
 This extension is optional and does not enter the base `StateStore` interface. Runtime can detect support. Stores that do not support it keep current behavior.
 
-MemoryStateStore processed event storage is not implemented. FileStateStore processed event storage is not implemented. Runtime integration is not implemented. `recoverWaitingRuns` is not implemented. Exactly-once behavior is not implemented.
+FileStateStore processed event storage is not implemented. Runtime integration is not implemented. `recoverWaitingRuns` is not implemented. Exactly-once behavior is not implemented.
 
-Future MemoryStateStore support can use a `Map`. Future FileStateStore support can write `processed-events/{safeEventId}.json`.
+MemoryStateStore uses in-memory records. Future FileStateStore support can write `processed-events/{safeEventId}.json`.
 
 ## 7. Status Semantics
 
@@ -175,9 +175,9 @@ Rules:
 
 ## 11. MemoryStateStore Behavior
 
-Candidate behavior:
+Current MemoryStateStore behavior:
 
-- Use `Map<eventId, ProcessedEventRecord>`.
+- Stores processed event records in memory.
 - `saveProcessedEvent` overwrites the same event id.
 - `listProcessedEvents` returns records sorted by `eventId`.
 - `deleteProcessedEvent` deletes a record.
@@ -216,19 +216,35 @@ Future `checkHealth` could report:
 
 ## 15. Tests Needed If Implemented
 
-Future tests should cover:
+Implemented tests currently cover:
 
 - MemoryStateStore saves processed event record.
 - MemoryStateStore overwrites same event id.
+- MemoryStateStore lists processed events sorted by eventId.
+- MemoryStateStore deletes processed event records.
+- MemoryStateStore clear removes processed events.
+- MemoryStateStore validates eventId.
+- MemoryStateStore validates eventName.
+- MemoryStateStore validates status.
+- MemoryStateStore validates firstSeenAt and updatedAt.
+- MemoryStateStore validates attemptCount.
+- MemoryStateStore validates matchedRunIds.
+- MemoryStateStore validates recoveredFlowRunIds.
+- MemoryStateStore validates optional error field.
+- supportsProcessedEvents detects MemoryStateStore and compatible stores.
+
+Remaining future tests should cover:
+
 - FileStateStore writes processed event JSON.
-- Invalid event id is rejected.
-- `listProcessedEvents` sorts deterministically.
-- `clear` removes processed events.
-- `recoverWaitingRuns` records `started` / `completed`.
-- Failed recovery records `failed`.
+- FileStateStore lists processed events deterministically.
+- FileStateStore rejects invalid processed event JSON.
+- FileStateStore clear removes processed events.
+- Runtime processed event integration does not affect matchWaitingRuns or previewEventRecovery.
+- recoverWaitingRuns records started / completed.
+- Failed recovery records failed.
 - Duplicate completed event behavior follows the selected policy.
-- `matchWaitingRuns` does not write processed event records.
-- `previewEventRecovery` does not write processed event records.
+- matchWaitingRuns does not write processed event records.
+- previewEventRecovery does not write processed event records.
 
 ## 16. Open Questions
 

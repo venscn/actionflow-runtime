@@ -155,8 +155,8 @@ describe("MemoryStateStore", () => {
     expect(supportsWaitingIndex(new MinimalStateStore())).toBe(false);
   });
 
-  it("supportsProcessedEvents returns false for MemoryStateStore", () => {
-    expect(supportsProcessedEvents(new MemoryStateStore())).toBe(false);
+  it("supportsProcessedEvents returns true for MemoryStateStore", () => {
+    expect(supportsProcessedEvents(new MemoryStateStore())).toBe(true);
   });
 
   it("supportsProcessedEvents returns false for a minimal StateStore", () => {
@@ -186,6 +186,142 @@ describe("MemoryStateStore", () => {
     };
 
     expect(record.error).toBe("recovery failed");
+  });
+
+  it("saveProcessedEvent stores and reads a processed event record", () => {
+    const store = new MemoryStateStore();
+    const record = createProcessedEventRecord("started");
+
+    store.saveProcessedEvent(record);
+
+    expect(store.getProcessedEvent(record.eventId)).toEqual(record);
+  });
+
+  it("saveProcessedEvent overwrites the same eventId", () => {
+    const store = new MemoryStateStore();
+    const first = createProcessedEventRecord("started", "event-1");
+    const second = {
+      ...createProcessedEventRecord("completed", "event-1"),
+      attemptCount: 2
+    };
+
+    store.saveProcessedEvent(first);
+    store.saveProcessedEvent(second);
+
+    expect(store.getProcessedEvent("event-1")).toEqual(second);
+    expect(store.listProcessedEvents()).toHaveLength(1);
+  });
+
+  it("listProcessedEvents returns deterministic eventId-sorted records", () => {
+    const store = new MemoryStateStore();
+
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-c"));
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-a"));
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-b"));
+
+    expect(store.listProcessedEvents().map((record) => record.eventId)).toEqual(["event-a", "event-b", "event-c"]);
+  });
+
+  it("deleteProcessedEvent removes a record", () => {
+    const store = new MemoryStateStore();
+
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-1"));
+
+    expect(store.deleteProcessedEvent("event-1")).toBe(true);
+    expect(store.deleteProcessedEvent("event-1")).toBe(false);
+    expect(store.getProcessedEvent("event-1")).toBeUndefined();
+  });
+
+  it("clear removes processed event records and existing records", () => {
+    const store = new MemoryStateStore();
+
+    store.saveActionRun(createActionRun("action-run-1", "ready"));
+    store.saveFlowRun(createFlowRun("flow-run-1", "ready"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-1"));
+
+    store.clear();
+
+    expect(store.listActionRuns()).toEqual([]);
+    expect(store.listFlowRuns()).toEqual([]);
+    expect(store.listWaitingActionRuns()).toEqual([]);
+    expect(store.listProcessedEvents()).toEqual([]);
+  });
+
+  it("saveProcessedEvent validates eventId", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), eventId: "" })).toThrow(
+      "eventId is required"
+    );
+  });
+
+  it("saveProcessedEvent validates eventName", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), eventName: "" })).toThrow(
+      "eventName is required"
+    );
+  });
+
+  it("saveProcessedEvent validates status", () => {
+    const store = new MemoryStateStore();
+
+    expect(() =>
+      store.saveProcessedEvent({ ...createProcessedEventRecord("started"), status: "invalid" as never })
+    ).toThrow("Invalid processed event status");
+  });
+
+  it("saveProcessedEvent validates firstSeenAt and updatedAt", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), firstSeenAt: "" })).toThrow(
+      "firstSeenAt is required"
+    );
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), updatedAt: "" })).toThrow(
+      "updatedAt is required"
+    );
+  });
+
+  it("saveProcessedEvent validates attemptCount", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), attemptCount: -1 })).toThrow(
+      "attemptCount must be a non-negative integer"
+    );
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), attemptCount: 1.5 })).toThrow(
+      "attemptCount must be a non-negative integer"
+    );
+  });
+
+  it("saveProcessedEvent validates matchedRunIds", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), matchedRunIds: [""] })).toThrow(
+      "matchedRunIds must be an array of non-empty strings"
+    );
+    expect(() =>
+      store.saveProcessedEvent({ ...createProcessedEventRecord("started"), matchedRunIds: "flow-run-1:node-1" as never })
+    ).toThrow("matchedRunIds must be an array of non-empty strings");
+  });
+
+  it("saveProcessedEvent validates recoveredFlowRunIds", () => {
+    const store = new MemoryStateStore();
+
+    expect(() =>
+      store.saveProcessedEvent({ ...createProcessedEventRecord("started"), recoveredFlowRunIds: [""] })
+    ).toThrow("recoveredFlowRunIds must be an array of non-empty strings");
+    expect(() =>
+      store.saveProcessedEvent({ ...createProcessedEventRecord("started"), recoveredFlowRunIds: "flow-run-1" as never })
+    ).toThrow("recoveredFlowRunIds must be an array of non-empty strings");
+  });
+
+  it("saveProcessedEvent validates optional error field", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("failed"), error: 1 as never })).toThrow(
+      "error must be a string"
+    );
   });
 
   it("indexWaitingActionRun stores a waiting run", () => {
@@ -437,11 +573,11 @@ function createWaitingActionRun(runId: string, waitReason: string, actionId = "w
   };
 }
 
-function createProcessedEventRecord(status: ProcessedEventRecord["status"]): ProcessedEventRecord {
+function createProcessedEventRecord(status: ProcessedEventRecord["status"], eventId = `event-${status}`): ProcessedEventRecord {
   const now = new Date().toISOString();
 
   return {
-    eventId: `event-${status}`,
+    eventId,
     eventName: "user.created",
     status,
     firstSeenAt: now,
