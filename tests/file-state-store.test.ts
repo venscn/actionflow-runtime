@@ -342,6 +342,91 @@ describe("FileStateStore", () => {
     expect(listPendingBatchManifestFiles(rootDir)).toEqual([]);
   });
 
+  it("listPendingBatches returns an empty list when no pending directory exists", () => {
+    const store = createStore();
+
+    expect(store.listPendingBatches()).toEqual([]);
+  });
+
+  it("listPendingBatches returns pending manifests after saveRunBatch in deterministic order", () => {
+    const store = createStore();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-2", "running"),
+      actionRuns: [createActionRun("flow-run-2:node-1", "done")]
+    });
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    const batches = store.listPendingBatches();
+    const paths = batches.map((batch) => batch.path);
+
+    expect(batches).toHaveLength(2);
+    expect(paths).toEqual([...paths].sort());
+    expect(batches.map((batch) => batch.manifest.status)).toEqual(["pending", "pending"]);
+  });
+
+  it("listPendingBatches parses manifest content", () => {
+    const store = createStore();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    const [batch] = store.listPendingBatches();
+
+    expect(batch.manifest.flowRunId).toBe("flow-run-1");
+    expect(batch.manifest.actionRunIds).toEqual(["flow-run-1:node-1"]);
+    expect(batch.manifest.targetFiles).toEqual([
+      `flow-runs/${safeFileName("flow-run-1")}.json`,
+      `action-runs/${safeFileName("flow-run-1:node-1")}.json`
+    ]);
+  });
+
+  it("listPendingBatches throws on corrupted JSON", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writePendingBatchFile(rootDir, "bad.json", "{");
+
+    expect(() => store.listPendingBatches()).toThrow();
+  });
+
+  it("listPendingBatches throws on invalid manifest", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writePendingBatchFile(
+      rootDir,
+      "bad.json",
+      JSON.stringify({
+        schemaVersion: 2,
+        kind: "runBatch",
+        batchId: "batch-1",
+        createdAt: new Date().toISOString(),
+        status: "pending",
+        actionRunIds: [],
+        targetFiles: []
+      })
+    );
+
+    expect(() => store.listPendingBatches()).toThrow("Unsupported batch manifest schemaVersion");
+  });
+
+  it("clear removes pending batches", () => {
+    const store = createStore();
+
+    store.saveRunBatch({
+      flowRun: createFlowRun("flow-run-1", "running"),
+      actionRuns: [createActionRun("flow-run-1:node-1", "done")]
+    });
+
+    expect(store.listPendingBatches()).toHaveLength(1);
+
+    store.clear();
+
+    expect(store.listPendingBatches()).toEqual([]);
+  });
+
   function createStore(): FileStateStore {
     return createStoreWithRoot().store;
   }
@@ -380,6 +465,12 @@ function writeManagedFile(rootDir: string, subdir: string, id: string, content: 
   const dir = path.join(rootDir, subdir);
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, `${safeFileName(id)}.json`), content, "utf8");
+}
+
+function writePendingBatchFile(rootDir: string, fileName: string, content: string): void {
+  const dir = path.join(rootDir, "batches", "pending");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, fileName), content, "utf8");
 }
 
 function listPendingBatchManifestFiles(rootDir: string): string[] {

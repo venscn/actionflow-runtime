@@ -125,6 +125,8 @@ Future APIs could include:
 - `inspectBatches()`
 - `checkStoreHealth()`
 
+FileStateStore currently exposes `listPendingBatches()` for manual inspection. It reads and parses pending batch manifests without mutating them. It does not automatically recover, mark pending batches as failed, or change runtime execution. Invalid or corrupted pending manifests are reported as errors.
+
 If a pending batch is found, the runtime should not automatically recover it. Tooling can report incomplete batches and let the host or user decide what to do.
 
 ## 9. Recovery Semantics
@@ -164,6 +166,8 @@ Phase 5:
 Phase 6:
 
 - Add store health inspection helper.
+
+Status: partially implemented for pending manifests only. `FileStateStore.listPendingBatches()` can list and parse pending batch manifests, but broader store health checks are not implemented.
 
 ## 11. Tests Needed
 

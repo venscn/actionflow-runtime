@@ -12,11 +12,21 @@ import path from "node:path";
 
 import type { BatchStateStore, StateStoreRunBatch } from "./state-store.js";
 import type { ActionRunRecord, FlowRunRecord } from "./types.js";
-import { createBatchManifest, createBatchTargetFiles } from "./file-state-store-batch.js";
+import {
+  createBatchManifest,
+  createBatchTargetFiles,
+  parseBatchManifest,
+  type FileStoreBatchManifest
+} from "./file-state-store-batch.js";
 import { createEnvelope, parseEnvelope, safeFileName } from "./file-state-store-utils.js";
 
 export interface FileStateStoreOptions {
   rootDir: string;
+}
+
+export interface FileStateStorePendingBatch {
+  path: string;
+  manifest: FileStoreBatchManifest;
 }
 
 export class FileStateStore implements BatchStateStore {
@@ -73,6 +83,27 @@ export class FileStateStore implements BatchStateStore {
 
   listFlowRuns(): readonly FlowRunRecord[] {
     return this.listRecords(this.flowRunsDir, "flowRun");
+  }
+
+  listPendingBatches(): readonly FileStateStorePendingBatch[] {
+    this.assertManagedDirectory(this.pendingBatchesDir);
+
+    if (!existsSync(this.pendingBatchesDir)) {
+      return [];
+    }
+
+    return readdirSync(this.pendingBatchesDir)
+      .filter((fileName) => fileName.endsWith(".json"))
+      .sort()
+      .map((fileName) => {
+        const filePath = path.join(this.pendingBatchesDir, fileName);
+        const raw = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+
+        return {
+          path: filePath,
+          manifest: parseBatchManifest(raw)
+        };
+      });
   }
 
   deleteActionRun(runId: string): boolean {
