@@ -88,6 +88,7 @@ npm run example:file-store-resume
 - [Specification](docs/spec.md)
 - [State Persistence Design](docs/state-persistence-design.md)
 - [FileStateStore MVP Plan](docs/file-state-store-plan.md)
+- [StateStore Batch Save Design](docs/state-store-batch-save-design.md)
 
 ## Facade Example
 
@@ -181,9 +182,12 @@ Implemented:
 - shared simple version comparison
 - in-memory run records
 - FileStateStore for local ActionRun / FlowRun persistence
+- MemoryStateStore batch save
+- FileStateStore best-effort batch save
 
 Not implemented yet:
 
+- atomic multi-file transactions
 - durable recovery after process restart
 - variable/template binding between flow nodes
 - durable event wakeup for waiting actions

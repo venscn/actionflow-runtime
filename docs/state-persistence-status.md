@@ -11,6 +11,9 @@ Current implemented pieces:
 - `safeFileName` for deterministic id-to-file-name encoding.
 - JSON serializability checks for persisted records.
 - `ActionFlowRuntime.restoreRun`.
+- `MemoryStateStore.saveRunBatch`.
+- FileStateStore best-effort `saveRunBatch`.
+- Runtime optional batch save path.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -25,7 +28,7 @@ The following are not implemented:
 - FlowDefinition persistence.
 - EventTriggerDefinition persistence.
 - Database stores.
-- Transaction / batch save.
+- Transaction / atomic multi-file batch save.
 - Schema migration.
 - Production concurrency safety.
 - Error serialization strategy.
@@ -58,6 +61,8 @@ Current recovery is local record reload only.
 Known risks:
 
 - FlowRun and ActionRun saves are not atomic together.
+- FlowRun and ActionRun saves now use batch when supported, but FileStateStore batch remains best-effort and not atomic.
+- Partial write risk still exists for FileStateStore.
 - Corrupted JSON fails reads and lists.
 - There is no migration story yet.
 - There is no error serialization strategy.
@@ -69,7 +74,7 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: batch save design.
+- Phase A: FileStateStore staging / commit marker design.
 - Phase B: restore API hardening.
 - Phase C: waiting index design.
 - Phase D: event recovery design.
@@ -80,7 +85,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- StateStore batch save design only.
+- FileStateStore staging / commit marker design only.
 - `restoreRun` edge-case hardening tests.
 
-Recommendation: start with `restoreRun` edge-case hardening tests. They are lower-risk, will clarify current record assumptions, and will make the later batch save design more concrete.
+Recommendation: start with FileStateStore staging / commit marker design. It directly addresses the remaining partial-write risk without adding a new storage backend.
