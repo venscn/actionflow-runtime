@@ -97,6 +97,7 @@ npm run example:file-store-resume
 - [Explicit Tick Recovery Design](docs/explicit-tick-recovery-design.md)
 - [Processed Event ID Design](docs/processed-event-id-design.md)
 - [Duplicate Event Skip Policy](docs/duplicate-event-skip-policy.md)
+- [Stale Waiting Index Health Design](docs/stale-waiting-index-health-design.md)
 
 ## Facade Example
 

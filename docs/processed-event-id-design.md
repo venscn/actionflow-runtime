@@ -90,7 +90,7 @@ interface ProcessedEventStore extends StateStore {
 
 This extension is optional and does not enter the base `StateStore` interface. Runtime can detect support. Stores that do not support it keep current behavior.
 
-Runtime explicit processed event store accessors are implemented. `recoverWaitingRuns` writes observe-only `started`, `completed`, and `failed` records when `ProcessedEventStore` is available. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. The explicit `skip-completed` duplicate policy is implemented on `recoverWaitingRuns`. Retry-failed policy, stale-started policy, exactly-once behavior, and durable recovery remain future work.
+Runtime explicit processed event store accessors are implemented. `recoverWaitingRuns` writes observe-by-default `started`, `completed`, and `failed` records when `ProcessedEventStore` is available. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. The explicit `skip-completed` duplicate policy is implemented on `recoverWaitingRuns`. Retry-failed policy, stale-started policy, exactly-once behavior, and durable recovery remain future work.
 
 MemoryStateStore uses in-memory records. FileStateStore writes local JSON records under `processed-events/{safeEventId}.json`.
 
@@ -213,6 +213,8 @@ They are complementary indexes, not the same data:
 - Processed event id cannot prove a waiting run completed.
 - A processed event record can reference matched or recovered run ids for diagnostics.
 
+See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the proposed waiting index consistency checks. Processed event records cannot automatically repair waiting index entries.
+
 ## 13. Relationship With EventTriggerRegistry
 
 Processed event id may eventually apply to both:
@@ -232,7 +234,7 @@ Future `checkHealth` could report:
 - `failed` event records.
 - Processed event records with missing referenced runs.
 
-`checkHealth` should stay read-only. Cleanup should be an explicit API.
+`checkHealth` should stay read-only. Cleanup should be an explicit API. Waiting index consistency checks are designed separately in [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) and are not implemented.
 
 ## 15. Tests Needed If Implemented
 

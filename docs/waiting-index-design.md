@@ -145,8 +145,8 @@ Suggested phases:
 - Phase 2: MemoryStateStore waiting index. Implemented.
 - Phase 3: Runtime optional waiting index path. Implemented.
 - Phase 4: FileStateStore waiting index JSON files. Implemented.
-- Phase 5: health report integration. Not implemented.
-- Phase 6: event recovery design. Not implemented.
+- Phase 5: health report integration. Designed in [Stale Waiting Index Health Design](stale-waiting-index-health-design.md), not implemented.
+- Phase 6: event recovery design and first read-only APIs. Partially implemented; automatic wakeup is not implemented.
 
 ## 11. Event Recovery Relationship
 
@@ -163,7 +163,7 @@ Event recovery still needs separate design:
 
 `EventTriggerRegistry` does not currently use Waiting Index automatically. Waiting Index is a prerequisite for event recovery, not event recovery itself.
 
-See [Event Recovery Design](event-recovery-design.md) for the proposed first recovery model. Event recovery and automatic wakeup are not implemented.
+See [Event Recovery Design](event-recovery-design.md) for the current recovery model and remaining recovery work. Automatic wakeup is not implemented.
 
 ## 12. Risks
 
@@ -177,6 +177,8 @@ Known risks:
 - Waiting index may become inconsistent with ActionRunRecord.
 - Failed removal can leave stale index entries.
 - FileStateStore does not provide multi-process safety.
+
+See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the proposed read-only health checks. Stale waiting index health checks and repair APIs are not implemented.
 
 ## 13. Tests Needed
 

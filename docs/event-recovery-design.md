@@ -122,7 +122,7 @@ The implemented `previewEventRecovery(event)` API queries the waiting index and 
 
 If an entry has no `flowRunId`, preview records a skipped entry. If `restoreRun` fails, preview records a skipped entry with the error message.
 
-The implemented `recoverWaitingRuns(event)` API returns match/preview recovery results only. When `ProcessedEventStore` is available, it records observe-only `started`, `completed`, and `failed` processed event attempts by default. It also supports explicit `duplicatePolicy: "skip-completed"` for completed processed event records. It does not call `tick`, does not wake actions, does not execute triggers, and does not implement exactly-once behavior.
+The implemented `recoverWaitingRuns(event)` API returns match/preview recovery results only. When `ProcessedEventStore` is available, it records observe-by-default `started`, `completed`, and `failed` processed event attempts. It also supports explicit `duplicatePolicy: "skip-completed"` for completed processed event records. It does not call `tick`, does not wake actions, does not execute triggers, and does not implement exactly-once behavior.
 
 ## 8. Recovery Strategy Options
 
@@ -202,15 +202,15 @@ Event Recovery depends on `WaitingIndexStore`.
 
 ## 13. Health Check Relationship
 
-`checkHealth` may later validate stale waiting index entries.
+`checkHealth` may later validate stale waiting index entries. See [Stale Waiting Index Health Design](stale-waiting-index-health-design.md) for the proposed read-only checks.
 
-Current health reporting does not verify that waiting entries correspond to existing ActionRun records. Future issues could include:
+Current health reporting does not verify that waiting entries correspond to existing ActionRun records. Stale waiting index health checks are designed but not implemented. Future issues could include:
 
 - Missing waiting action target.
 - Stale waiting index entry.
 - Waiting entry without `flowRunId`.
 
-`checkHealth` should remain read-only and should not repair data automatically.
+`checkHealth` should remain read-only and should not repair data automatically. `matchWaitingRuns` does not automatically filter stale entries.
 
 ## 14. Implementation Plan
 
