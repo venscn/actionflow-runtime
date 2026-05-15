@@ -8,7 +8,13 @@ import {
   type PackageManifestValidationResult,
   validatePackageManifest
 } from "./package-manifest.js";
-import { MemoryStateStore, supportsRunBatch, type StateStore, type StateStoreRunBatch } from "./state-store.js";
+import {
+  MemoryStateStore,
+  supportsRunBatch,
+  supportsWaitingIndex,
+  type StateStore,
+  type StateStoreRunBatch
+} from "./state-store.js";
 import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowRunRecord } from "./types.js";
 
 export interface ActionFlowRuntimeDependencies {
@@ -105,6 +111,7 @@ export class ActionFlowRuntime {
 
     if (supportsRunBatch(this.store)) {
       this.store.saveRunBatch(batch);
+      this.updateWaitingIndex(nextRun);
       return nextRun;
     }
 
@@ -114,7 +121,25 @@ export class ActionFlowRuntime {
       this.store.saveActionRun(actionRun);
     }
 
+    this.updateWaitingIndex(nextRun);
+
     return nextRun;
+  }
+
+  private updateWaitingIndex(run: FlowEngineRunRecord): void {
+    if (!supportsWaitingIndex(this.store)) {
+      return;
+    }
+
+    for (const actionRun of Object.values(run.actionRuns)) {
+      const runId = actionRun.runId ?? actionRun.id;
+
+      if (actionRun.status === "waiting" && typeof actionRun.waitReason === "string" && actionRun.waitReason.length > 0) {
+        this.store.indexWaitingActionRun(actionRun);
+      } else {
+        this.store.removeWaitingActionRun(runId);
+      }
+    }
   }
 
   private requireFlow(flowId: string, version?: string): FlowDefinition {

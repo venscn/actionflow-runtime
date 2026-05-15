@@ -4,9 +4,9 @@
 
 ActionRun can currently enter `waiting` status. FlowEngine can also move a node or flow to `waiting`. `ActionFlowRuntime.restoreRun` can reload saved run records.
 
-The runtime does not yet have an index for finding which ActionRuns are waiting for a specific external event or reason. `EventTriggerRegistry` is still only a descriptive registry and does not automatically wake waiting actions.
+The runtime can maintain a waiting index when the configured StateStore supports `WaitingIndexStore`. `EventTriggerRegistry` is still only a descriptive registry and does not automatically wake waiting actions.
 
-Without a persisted waiting index, future event recovery would need to scan all ActionRun records. That is inefficient and leaves the matching semantics unclear. Current implementation includes Waiting Index types and MemoryStateStore support only.
+Without a persisted waiting index, future event recovery would need to scan all ActionRun records. That is inefficient and leaves the matching semantics unclear. Current implementation includes Waiting Index types, MemoryStateStore support, and optional Runtime integration. FileStateStore persistence is not implemented.
 
 ## 2. Goals
 
@@ -94,7 +94,7 @@ The waiting index should not be forced into the base `StateStore` interface.
 
 ## 7. Runtime Integration Sketch
 
-Future runtime integration could be:
+Runtime integration currently works as follows:
 
 1. `ActionFlowRuntime.tick` produces `nextRun`.
 2. Runtime saves FlowRun and ActionRuns.
@@ -135,7 +135,7 @@ Current implemented behavior:
 - `removeWaitingActionRun` deletes the entry.
 - `listWaitingActionRuns` supports `waitReason`, `flowRunId`, and `actionId` filters.
 - `supportsWaitingIndex(store)` detects the optional interface.
-- Runtime does not populate the index yet.
+- Runtime updates the index after persistence succeeds when the store supports the optional interface.
 
 ## 10. FileStateStore Behavior
 
@@ -143,7 +143,7 @@ Suggested phases:
 
 - Phase 1: helper/types only. Implemented.
 - Phase 2: MemoryStateStore waiting index. Implemented.
-- Phase 3: Runtime optional waiting index path. Not implemented.
+- Phase 3: Runtime optional waiting index path. Implemented.
 - Phase 4: FileStateStore waiting index JSON files. Not implemented.
 - Phase 5: health report integration. Not implemented.
 - Phase 6: event recovery design. Not implemented.
@@ -184,11 +184,12 @@ Implemented tests cover:
 - MemoryStateStore removes index when an action is no longer waiting.
 - Filtering by `waitReason`, `flowRunId`, and `actionId`.
 - `supportsWaitingIndex` returns true for MemoryStateStore and false for stores without the optional interface.
+- Runtime uses waiting index only when the store supports it.
+- Runtime fallback when the store does not support it.
+- Runtime updates waiting index only after persistence succeeds.
 
 Future implementation tests should cover:
 
-- Runtime uses waiting index only when the store supports it.
-- Runtime fallback when the store does not support it.
 - FileStateStore writes waiting index entries.
 - FileStateStore lists waiting index entries.
 - FileStateStore rejects invalid index JSON.

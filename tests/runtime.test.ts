@@ -12,7 +12,7 @@ import {
   FlowRegistry,
   MemoryStateStore
 } from "../src/index.js";
-import type { ActionDefinition, FlowDefinition, FlowEngineRunRecord, StateStoreRunBatch } from "../src/index.js";
+import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowEngineRunRecord, StateStoreRunBatch } from "../src/index.js";
 
 describe("ActionFlowRuntime", () => {
   const tempDirs: string[] = [];
@@ -216,6 +216,89 @@ describe("ActionFlowRuntime", () => {
     const initialRun = runtime.createRun("flow.basic", "flow-run-1");
 
     await expect(runtime.tick(initialRun, "flow.basic")).rejects.toBe(error);
+  });
+
+  it("indexes waiting ActionRuns when the store supports WaitingIndexStore", async () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.registerAction(createWaitingAsyncAction("wait.action", "external-event"));
+    runtime.registerFlow(createFlow("flow.wait", "wait.action"));
+
+    const initialRun = runtime.createRun("flow.wait", "flow-run-1");
+    const nextRun = await runtime.tick(initialRun, "flow.wait");
+
+    expect(nextRun.status).toBe("waiting");
+    expect(store.listWaitingActionRuns()).toEqual([
+      expect.objectContaining({
+        runId: "flow-run-1:node-1",
+        flowRunId: "flow-run-1",
+        nodeId: "node-1",
+        waitReason: "external-event",
+        actionId: "wait.action",
+        status: "waiting"
+      })
+    ]);
+  });
+
+  it("removes waiting index entry when the ActionRun is no longer waiting", async () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "external-event"));
+    runtime.registerAction(createInstantAction("echo", "ok"));
+    runtime.registerFlow(createFlow("flow.basic", "echo"));
+
+    const initialRun = runtime.createRun("flow.basic", "flow-run-1");
+    await runtime.tick(initialRun, "flow.basic");
+
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
+
+  it("does not require waiting index support", async () => {
+    const store = new RecordingFallbackStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.registerAction(createWaitingAsyncAction("wait.action", "external-event"));
+    runtime.registerFlow(createFlow("flow.wait", "wait.action"));
+
+    const initialRun = runtime.createRun("flow.wait", "flow-run-1");
+    const nextRun = await runtime.tick(initialRun, "flow.wait");
+
+    expect(nextRun.status).toBe("waiting");
+    expect(store.saveFlowRunCalls).toBe(2);
+    expect(store.saveActionRunCalls).toBe(1);
+    expect(store.getActionRun("flow-run-1:node-1")).toMatchObject({
+      status: "waiting",
+      waitReason: "external-event"
+    });
+  });
+
+  it("propagates waiting index errors", async () => {
+    const error = new Error("waiting index failed");
+    const store = new FailingWaitingIndexStore(error);
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.registerAction(createWaitingAsyncAction("wait.action", "external-event"));
+    runtime.registerFlow(createFlow("flow.wait", "wait.action"));
+
+    const initialRun = runtime.createRun("flow.wait", "flow-run-1");
+
+    await expect(runtime.tick(initialRun, "flow.wait")).rejects.toBe(error);
+  });
+
+  it("updates waiting index only after persistence succeeds", async () => {
+    const error = new Error("batch failed");
+    const store = new FailingBatchWaitingIndexStore(error);
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    runtime.registerAction(createWaitingAsyncAction("wait.action", "external-event"));
+    runtime.registerFlow(createFlow("flow.wait", "wait.action"));
+
+    const initialRun = runtime.createRun("flow.wait", "flow-run-1");
+
+    await expect(runtime.tick(initialRun, "flow.wait")).rejects.toBe(error);
+    expect(store.indexCalls).toBe(0);
   });
 
   it("throws when restoring a missing FlowRun", () => {
@@ -623,6 +706,26 @@ function createInstantAction(id: string, output: string): ActionDefinition<unkno
   };
 }
 
+function createWaitingAsyncAction(
+  id: string,
+  reason: string
+): ActionDefinition<unknown, string, { cursor: number }> {
+  return {
+    id,
+    version: "1.0.0",
+    mode: "async",
+    inputSchema: undefined,
+    outputSchema: undefined,
+    stateSchema: undefined,
+    sideEffects: [],
+    run: () => ({
+      type: "waiting",
+      state: { cursor: 1 },
+      reason
+    })
+  };
+}
+
 function createStoredActionRun(runId: string, output: string) {
   return {
     id: runId,
@@ -632,6 +735,19 @@ function createStoredActionRun(runId: string, output: string) {
     input: null,
     status: "done" as const,
     output
+  };
+}
+
+function createWaitingStoredActionRun(runId: string, waitReason: string): ActionRunRecord {
+  return {
+    id: runId,
+    runId,
+    actionId: "wait.action",
+    actionVersion: "1.0.0",
+    input: null,
+    status: "waiting",
+    state: { cursor: 1 },
+    waitReason
   };
 }
 
@@ -720,6 +836,33 @@ class FailingBatchStateStore extends MemoryStateStore {
 
   override saveRunBatch(): void {
     throw this.error;
+  }
+}
+
+class FailingWaitingIndexStore extends MemoryStateStore {
+  constructor(private readonly error: Error) {
+    super();
+  }
+
+  override indexWaitingActionRun(): void {
+    throw this.error;
+  }
+}
+
+class FailingBatchWaitingIndexStore extends MemoryStateStore {
+  indexCalls = 0;
+
+  constructor(private readonly error: Error) {
+    super();
+  }
+
+  override saveRunBatch(): void {
+    throw this.error;
+  }
+
+  override indexWaitingActionRun(run: ActionRunRecord): void {
+    this.indexCalls += 1;
+    super.indexWaitingActionRun(run);
   }
 }
 

@@ -188,6 +188,8 @@ A sequence node has ordered `steps`.
 - `createRun(flowId, runId, version?)` resolves a flow from `FlowRegistry`, creates a FlowRun through `FlowEngine`, saves it to the store, and returns it.
 - `tick(run, flowId, options?, version?)` resolves a flow, advances it through `FlowEngine`, saves the updated FlowRun, and saves contained ActionRuns.
 - When the configured store supports `saveRunBatch`, `tick` uses it to save the FlowRun and ActionRuns; otherwise it falls back to individual `saveFlowRun` and `saveActionRun` calls.
+- When the configured store supports `WaitingIndexStore`, `tick` updates the waiting index after FlowRun and ActionRun persistence succeeds.
+- Waiting index updates do not wake or resume waiting actions.
 - `restoreRun(flowRunId)` reloads a saved FlowRun from `StateStore`, fills missing FlowEngine record fields, and merges stored ActionRuns whose run ids start with the FlowRun id.
 - `checkPackageManifest(manifest)` first validates manifest structure, then checks referenced actions and flows against the runtime registries.
 - It does not add new execution semantics.
@@ -279,7 +281,7 @@ A parallel node has `branches`.
 - It indexes ActionRuns with `status: "waiting"` and a non-empty `waitReason`.
 - It supports filtering by `waitReason`, `flowRunId`, and `actionId`.
 - It is currently implemented by MemoryStateStore.
-- Runtime does not yet automatically populate it.
+- Runtime updates it from `ActionFlowRuntime.tick` when the configured store supports the optional interface.
 - FileStateStore does not yet persist waiting index entries.
 - Event recovery and automatic wakeup are not implemented.
 
@@ -290,7 +292,7 @@ The following are not implemented:
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
-- WaitingIndexStore exists for MemoryStateStore, but Runtime tick integration, FileStateStore waiting index persistence, waiting action wakeup, and event recovery are not implemented.
+- WaitingIndexStore exists for MemoryStateStore and Runtime tick integration, but FileStateStore waiting index persistence, waiting action wakeup, and event recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.

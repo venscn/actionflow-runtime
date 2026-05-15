@@ -24,6 +24,7 @@ Current implemented pieces:
 - FileStateStore `checkHealth` diagnostic summary.
 - Health report issues for pending, failed, and missing target diagnostics.
 - MemoryStateStore waiting index.
+- Runtime optional waiting index path.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -35,7 +36,6 @@ The following are not implemented:
 - Durable recovery guarantee.
 - Event recovery.
 - Waiting action wakeup.
-- Runtime waiting index integration.
 - FileStateStore waiting index.
 - FlowDefinition persistence.
 - EventTriggerDefinition persistence.
@@ -94,10 +94,9 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Runtime optional waiting index path.
-- Phase B: FileStateStore waiting index.
-- Phase C: Event recovery design.
-- Phase D: Event recovery implementation.
+- Phase A: FileStateStore waiting index.
+- Phase B: Event recovery design.
+- Phase C: Event recovery implementation.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -105,7 +104,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Runtime optional waiting index path.
 - FileStateStore waiting index.
+- Event recovery design.
 
-Recommendation: start with Runtime optional waiting index path. MemoryStateStore can now index waiting ActionRuns manually, but Runtime does not populate the index yet; FileStateStore waiting index, event recovery, and wakeup behavior are still not implemented.
+Recommendation: start with FileStateStore waiting index. Runtime can now maintain the optional waiting index for stores that support it, but FileStateStore persistence, event recovery, and wakeup behavior are still not implemented.
