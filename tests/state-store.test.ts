@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MemoryStateStore, supportsRunBatch } from "../src/index.js";
+import { MemoryStateStore, supportsRunBatch, supportsWaitingIndex } from "../src/index.js";
 import type { ActionRunRecord, FlowRunRecord, StateStore } from "../src/index.js";
 
 describe("MemoryStateStore", () => {
@@ -146,6 +146,180 @@ describe("MemoryStateStore", () => {
   it("supportsRunBatch returns false for a minimal StateStore", () => {
     expect(supportsRunBatch(new MinimalStateStore())).toBe(false);
   });
+
+  it("supportsWaitingIndex returns true for MemoryStateStore", () => {
+    expect(supportsWaitingIndex(new MemoryStateStore())).toBe(true);
+  });
+
+  it("supportsWaitingIndex returns false for a minimal StateStore", () => {
+    expect(supportsWaitingIndex(new MinimalStateStore())).toBe(false);
+  });
+
+  it("indexWaitingActionRun stores a waiting run", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    expect(store.listWaitingActionRuns()).toEqual([
+      expect.objectContaining({
+        runId: "flow-run-1:node-1",
+        actionId: "wait.action",
+        actionVersion: "1.0.0",
+        waitReason: "external-event",
+        status: "waiting"
+      })
+    ]);
+  });
+
+  it("indexWaitingActionRun requires waiting status", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.indexWaitingActionRun(createActionRun("flow-run-1:node-1", "ready"))).toThrow(
+      "ActionRun is not waiting"
+    );
+  });
+
+  it("indexWaitingActionRun requires non-empty waitReason", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.indexWaitingActionRun({ ...createWaitingActionRun("flow-run-1:node-1", ""), waitReason: "" })).toThrow(
+      "waitReason is required"
+    );
+    expect(() =>
+      store.indexWaitingActionRun({
+        ...createWaitingActionRun("flow-run-1:node-1", "external-event"),
+        waitReason: undefined
+      })
+    ).toThrow("waitReason is required");
+  });
+
+  it("indexWaitingActionRun derives flowRunId and nodeId from runId prefix", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    expect(store.listWaitingActionRuns()[0]).toMatchObject({
+      flowRunId: "flow-run-1",
+      nodeId: "node-1"
+    });
+  });
+
+  it("indexWaitingActionRun preserves nested-ish node suffix", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:parallel-root:branch-a", "external-event"));
+
+    expect(store.listWaitingActionRuns()[0]).toMatchObject({
+      flowRunId: "flow-run-1",
+      nodeId: "parallel-root:branch-a"
+    });
+  });
+
+  it("indexWaitingActionRun overwrites the same runId", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "first-event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "second-event"));
+
+    expect(store.listWaitingActionRuns()).toHaveLength(1);
+    expect(store.listWaitingActionRuns()[0]).toMatchObject({
+      waitReason: "second-event"
+    });
+  });
+
+  it("removeWaitingActionRun removes an entry", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+    store.removeWaitingActionRun("flow-run-1:node-1");
+
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
+
+  it("removeWaitingActionRun is safe for missing runId", () => {
+    const store = new MemoryStateStore();
+
+    expect(() => store.removeWaitingActionRun("missing-run")).not.toThrow();
+  });
+
+  it("listWaitingActionRuns filters by waitReason", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "event-a"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-2", "event-b"));
+
+    expect(store.listWaitingActionRuns({ waitReason: "event-a" }).map((entry) => entry.runId)).toEqual([
+      "flow-run-1:node-1"
+    ]);
+  });
+
+  it("listWaitingActionRuns filters by flowRunId", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-2:node-1", "event"));
+
+    expect(store.listWaitingActionRuns({ flowRunId: "flow-run-2" }).map((entry) => entry.runId)).toEqual([
+      "flow-run-2:node-1"
+    ]);
+  });
+
+  it("listWaitingActionRuns filters by actionId", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "event", "wait.action"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-2", "event", "other.action"));
+
+    expect(store.listWaitingActionRuns({ actionId: "other.action" }).map((entry) => entry.runId)).toEqual([
+      "flow-run-1:node-2"
+    ]);
+  });
+
+  it("listWaitingActionRuns combines filters with AND semantics", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "event-a", "wait.action"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-2", "event-b", "wait.action"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-2:node-1", "event-a", "wait.action"));
+
+    expect(
+      store
+        .listWaitingActionRuns({
+          waitReason: "event-a",
+          flowRunId: "flow-run-1",
+          actionId: "wait.action"
+        })
+        .map((entry) => entry.runId)
+    ).toEqual(["flow-run-1:node-1"]);
+  });
+
+  it("listWaitingActionRuns returns deterministic runId-sorted results", () => {
+    const store = new MemoryStateStore();
+
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-c", "event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-a", "event"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-b", "event"));
+
+    expect(store.listWaitingActionRuns().map((entry) => entry.runId)).toEqual([
+      "flow-run-1:node-a",
+      "flow-run-1:node-b",
+      "flow-run-1:node-c"
+    ]);
+  });
+
+  it("clear removes waiting index entries and existing run records", () => {
+    const store = new MemoryStateStore();
+
+    store.saveActionRun(createActionRun("action-run-1", "ready"));
+    store.saveFlowRun(createFlowRun("flow-run-1", "ready"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "external-event"));
+
+    store.clear();
+
+    expect(store.listActionRuns()).toEqual([]);
+    expect(store.listFlowRuns()).toEqual([]);
+    expect(store.listWaitingActionRuns()).toEqual([]);
+  });
 });
 
 class MinimalStateStore implements StateStore {
@@ -187,6 +361,18 @@ function createActionRun(runId: string, status: ActionRunRecord["status"]): Acti
     actionId: "echo",
     actionVersion: "1.0.0",
     status
+  };
+}
+
+function createWaitingActionRun(runId: string, waitReason: string, actionId = "wait.action"): ActionRunRecord {
+  return {
+    id: runId,
+    runId,
+    actionId,
+    actionVersion: "1.0.0",
+    status: "waiting",
+    state: { cursor: 1 },
+    waitReason
   };
 }
 
