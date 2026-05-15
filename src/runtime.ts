@@ -106,6 +106,44 @@ export class ActionFlowRuntime {
     };
   }
 
+  previewEventRecovery(event: RuntimeEvent): EventRecoveryResult {
+    const matchedResult = this.matchWaitingRuns(event);
+    const recovered: FlowEngineRunRecord[] = [];
+    const skipped: EventRecoverySkip[] = [];
+    const restoredFlowRunIds = new Set<string>();
+
+    for (const entry of matchedResult.matched) {
+      if (typeof entry.flowRunId !== "string" || entry.flowRunId.length === 0) {
+        skipped.push({
+          runId: entry.runId,
+          reason: "Missing flowRunId"
+        });
+        continue;
+      }
+
+      if (restoredFlowRunIds.has(entry.flowRunId)) {
+        continue;
+      }
+
+      try {
+        recovered.push(this.restoreRun(entry.flowRunId));
+        restoredFlowRunIds.add(entry.flowRunId);
+      } catch (error) {
+        skipped.push({
+          runId: entry.runId,
+          reason: describeError(error)
+        });
+      }
+    }
+
+    return {
+      eventId: matchedResult.eventId,
+      matched: matchedResult.matched,
+      recovered,
+      skipped
+    };
+  }
+
   createRun(flowId: string, runId: string, version?: string): FlowEngineRunRecord {
     const flow = this.requireFlow(flowId, version);
     const run = this.engine.createRun(runId, flow);
@@ -238,4 +276,8 @@ function validateRuntimeEvent(event: RuntimeEvent): void {
   if ("source" in event && event.source !== undefined && typeof event.source !== "string") {
     throw new Error("Runtime event source must be a string");
   }
+}
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

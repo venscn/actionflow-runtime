@@ -417,6 +417,174 @@ describe("ActionFlowRuntime", () => {
     expect(() => runtime.matchWaitingRuns({ id: "event-1", name: "user.created" })).toThrow(error);
   });
 
+  it("previewEventRecovery restores matched FlowRun records by flowRunId", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "waiting"
+    });
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+
+    const result = runtime.previewEventRecovery({ id: "event-1", name: "user.created" });
+
+    expect(result.matched).toHaveLength(1);
+    expect(result.recovered).toEqual([
+      expect.objectContaining({
+        id: "flow-run-1",
+        flowId: "flow.basic",
+        status: "waiting"
+      })
+    ]);
+    expect(result.skipped).toEqual([]);
+  });
+
+  it("previewEventRecovery returns matched but skipped when flowRunId is missing", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("standalone-run", "user.created"));
+
+    const result = runtime.previewEventRecovery({ id: "event-1", name: "user.created" });
+
+    expect(result.matched).toHaveLength(1);
+    expect(result.recovered).toEqual([]);
+    expect(result.skipped).toEqual([
+      {
+        runId: "standalone-run",
+        reason: "Missing flowRunId"
+      }
+    ]);
+  });
+
+  it("previewEventRecovery skips missing FlowRun", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.indexWaitingActionRun(createWaitingStoredActionRun("missing-flow-run:node-1", "user.created"));
+
+    const result = runtime.previewEventRecovery({ id: "event-1", name: "user.created" });
+
+    expect(result.matched).toHaveLength(1);
+    expect(result.recovered).toEqual([]);
+    expect(result.skipped).toEqual([
+      {
+        runId: "missing-flow-run:node-1",
+        reason: "FlowRun not found: missing-flow-run"
+      }
+    ]);
+  });
+
+  it("previewEventRecovery deduplicates recovered FlowRuns", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "waiting"
+    });
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-2", "user.created"));
+
+    const result = runtime.previewEventRecovery({ id: "event-1", name: "user.created" });
+
+    expect(result.matched).toHaveLength(2);
+    expect(result.recovered).toHaveLength(1);
+    expect(result.recovered[0]?.id).toBe("flow-run-1");
+  });
+
+  it("previewEventRecovery does not tick", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "waiting"
+    });
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    const flowRunCount = store.listFlowRuns().length;
+    const actionRunCount = store.listActionRuns().length;
+
+    const result = runtime.previewEventRecovery({ id: "event-1", name: "user.created" });
+
+    expect(result.recovered).toHaveLength(1);
+    expect(store.listFlowRuns()).toHaveLength(flowRunCount);
+    expect(store.listActionRuns()).toHaveLength(actionRunCount);
+  });
+
+  it("previewEventRecovery does not mutate waiting index", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "waiting"
+    });
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    const before = store.listWaitingActionRuns();
+
+    runtime.previewEventRecovery({ id: "event-1", name: "user.created" });
+
+    expect(store.listWaitingActionRuns()).toEqual(before);
+  });
+
+  it("previewEventRecovery does not execute EventTriggerRegistry", () => {
+    const store = new MemoryStateStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveFlowRun({
+      id: "flow-run-1",
+      flowId: "flow.basic",
+      status: "waiting"
+    });
+    store.indexWaitingActionRun(createWaitingStoredActionRun("flow-run-1:node-1", "user.created"));
+    runtime.registerTrigger({
+      id: "trigger.user-created",
+      event: "user.created",
+      flow: "flow.user-created"
+    });
+    const flowRunCount = store.listFlowRuns().length;
+
+    runtime.previewEventRecovery({ id: "event-1", name: "user.created" });
+
+    expect(runtime.triggers.has("trigger.user-created")).toBe(true);
+    expect(store.listFlowRuns()).toHaveLength(flowRunCount);
+  });
+
+  it("previewEventRecovery returns empty when store lacks WaitingIndexStore", () => {
+    const runtime = new ActionFlowRuntime({ stateStore: new RecordingFallbackStateStore() });
+
+    expect(runtime.previewEventRecovery({ id: "event-1", name: "user.created" })).toEqual({
+      eventId: "event-1",
+      matched: [],
+      recovered: [],
+      skipped: []
+    });
+  });
+
+  it("previewEventRecovery propagates waiting index list errors", () => {
+    const error = new Error("waiting index list failed");
+    const runtime = new ActionFlowRuntime({ stateStore: new FailingWaitingListStore(error) });
+
+    expect(() => runtime.previewEventRecovery({ id: "event-1", name: "user.created" })).toThrow(error);
+  });
+
+  it("previewEventRecovery validates event id and name", () => {
+    const runtime = new ActionFlowRuntime();
+
+    expect(() => runtime.previewEventRecovery({ id: "", name: "user.created" })).toThrow(
+      "Runtime event id is required"
+    );
+    expect(() => runtime.previewEventRecovery({ id: "event-1", name: "" })).toThrow(
+      "Runtime event name is required"
+    );
+  });
+
   it("throws when restoring a missing FlowRun", () => {
     const runtime = new ActionFlowRuntime();
 

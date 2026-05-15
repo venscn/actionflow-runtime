@@ -27,6 +27,7 @@ Current implemented pieces:
 - Runtime optional waiting index path.
 - FileStateStore waiting index.
 - Event Recovery match-only API.
+- Event Recovery restore preview API.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -96,8 +97,8 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: Explicit restore preview API.
-- Phase B: Explicit resume/tick recovery policy.
+- Phase A: Explicit resume/tick recovery policy.
+- Phase B: Processed event id design.
 - Phase C: Production store design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
@@ -106,7 +107,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Explicit restore preview API.
 - Explicit resume/tick recovery policy.
+- Processed event id design.
 
-Recommendation: start with explicit restore preview API. The match-only API can identify waiting entries, but it still does not restore, tick, wake actions, execute triggers, or provide durable recovery.
+Recommendation: start with explicit resume/tick recovery policy design. The preview API can identify waiting entries and reload stored FlowRun records for inspection, but it still does not tick, wake actions, execute triggers, or provide durable recovery.

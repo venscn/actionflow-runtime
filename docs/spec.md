@@ -194,6 +194,9 @@ A sequence node has ordered `steps`.
 - `matchWaitingRuns(event)` queries `WaitingIndexStore` by matching `event.name` against `waitReason`.
 - `matchWaitingRuns(event)` is read-only and returns matched waiting entries only.
 - `matchWaitingRuns(event)` does not restore, tick, wake waiting actions, or execute triggers.
+- `previewEventRecovery(event)` matches waiting entries and attempts `restoreRun` preview for matched `flowRunId` values.
+- `previewEventRecovery(event)` returns skipped entries for missing `flowRunId` or missing FlowRun records.
+- `previewEventRecovery(event)` does not tick, wake waiting actions, or execute triggers.
 - `checkPackageManifest(manifest)` first validates manifest structure, then checks referenced actions and flows against the runtime registries.
 - It does not add new execution semantics.
 - It does not install packages, load code, or execute flows during package checks.
@@ -297,7 +300,7 @@ The following are not implemented:
 - async action has ActionRun-level support and FlowEngine action-node support, but there is no event recovery system.
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
-- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, and read-only `matchWaitingRuns`, but automatic wakeup, `recoverWaitingRuns`, durable recovery, and event trigger execution are not implemented.
+- WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, read-only `matchWaitingRuns`, and read-only `previewEventRecovery`, but automatic wakeup, `recoverWaitingRuns`, durable recovery, and event trigger execution are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.
