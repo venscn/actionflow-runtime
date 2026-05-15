@@ -254,10 +254,12 @@ A parallel node has `branches`.
 - `listCommittedBatches()` can list and parse committed markers.
 - `listFailedBatches()` can list and parse failed markers.
 - `checkHealth()` summarizes pending, committed, and failed batch marker counts.
+- `checkHealth()` can report issue records for pending batches, failed batches, and missing committed target files.
 - Pending manifests are diagnostic only.
 - Committed markers are diagnostic only and do not make batch writes atomic.
 - Failed markers are best-effort diagnostics only and do not roll back or recover partial writes.
 - `checkHealth()` is diagnostic only and does not repair, recover, roll back, delete markers, or validate full data consistency.
+- Missing target file reports do not perform repair.
 - A `clean` health status does not mean durable recovery is guaranteed.
 - `listPendingBatches()` does not mutate pending batches.
 - Invalid or corrupted pending manifests are reported as errors.

@@ -22,6 +22,7 @@ Current implemented pieces:
 - Failed marker writing.
 - `listFailedBatches` failed marker inspection.
 - FileStateStore `checkHealth` diagnostic summary.
+- Health report issues for pending, failed, and missing target diagnostics.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -76,7 +77,8 @@ Known risks:
 - Pending manifests help diagnose batch writes but do not prevent partial writes.
 - Committed markers improve inspection but do not make writes atomic.
 - Failed markers improve inspection but do not repair partial writes.
-- Health check reports marker state but does not validate full data consistency or repair partial writes.
+- Health check reports marker state and missing committed target files, but does not validate full data consistency or repair partial writes.
+- Missing target detection reports possible inconsistency but does not repair it.
 - `listPendingBatches` can report invalid manifests but does not repair them.
 - Corrupted JSON fails reads and lists.
 - There is no migration story yet.
@@ -89,10 +91,9 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: rollback design evaluation.
-- Phase B: health report improvements.
-- Phase C: waiting index design.
-- Phase D: event recovery design.
+- Phase A: waiting index design.
+- Phase B: event recovery design.
+- Phase C: production store design.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -100,7 +101,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- Health report improvements.
 - Waiting index design.
+- Event recovery design.
 
-Recommendation: start with health report improvements. Rollback has been evaluated as a risky future direction, and batch marker inspection can summarize marker state, but it still cannot repair or reverse partial writes.
+Recommendation: start with waiting index design. Health reports now expose basic marker and missing-target diagnostics, while waiting action recovery remains the next runtime-level gap.

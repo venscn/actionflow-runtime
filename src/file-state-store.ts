@@ -41,11 +41,21 @@ export interface FileStateStoreFailedBatch {
 
 export type FileStateStoreBatchHealthStatus = "clean" | "has-pending" | "has-failed" | "has-pending-and-failed";
 
+export type FileStateStoreHealthIssueKind = "missing-target-file" | "failed-batch" | "pending-batch";
+
+export interface FileStateStoreHealthIssue {
+  kind: FileStateStoreHealthIssueKind;
+  batchId: string;
+  targetFile?: string;
+  message: string;
+}
+
 export interface FileStateStoreHealth {
   status: FileStateStoreBatchHealthStatus;
   pendingBatches: readonly FileStateStorePendingBatch[];
   committedBatches: readonly FileStateStoreCommittedBatch[];
   failedBatches: readonly FileStateStoreFailedBatch[];
+  issues: readonly FileStateStoreHealthIssue[];
   summary: {
     pending: number;
     committed: number;
@@ -145,18 +155,67 @@ export class FileStateStore implements BatchStateStore {
     const failedBatches = this.listFailedBatches();
     const pending = pendingBatches.length;
     const failed = failedBatches.length;
+    const issues = this.collectHealthIssues(pendingBatches, committedBatches, failedBatches);
 
     return {
       status: batchHealthStatus(pending, failed),
       pendingBatches,
       committedBatches,
       failedBatches,
+      issues,
       summary: {
         pending,
         committed: committedBatches.length,
         failed
       }
-    };
+      };
+  }
+
+  private collectHealthIssues(
+    pendingBatches: readonly FileStateStorePendingBatch[],
+    committedBatches: readonly FileStateStoreCommittedBatch[],
+    failedBatches: readonly FileStateStoreFailedBatch[]
+  ): FileStateStoreHealthIssue[] {
+    const issues: FileStateStoreHealthIssue[] = [];
+
+    for (const batch of pendingBatches) {
+      issues.push({
+        kind: "pending-batch",
+        batchId: batch.manifest.batchId,
+        message: `Pending batch: ${batch.manifest.batchId}`
+      });
+    }
+
+    for (const batch of failedBatches) {
+      issues.push({
+        kind: "failed-batch",
+        batchId: batch.manifest.batchId,
+        message: `Failed batch: ${batch.manifest.batchId}`
+      });
+    }
+
+    for (const batch of committedBatches) {
+      for (const targetFile of batch.manifest.targetFiles) {
+        const targetPath = this.batchTargetPath(targetFile);
+
+        if (!existsSync(targetPath)) {
+          issues.push({
+            kind: "missing-target-file",
+            batchId: batch.manifest.batchId,
+            targetFile,
+            message: `Missing target file for batch ${batch.manifest.batchId}: ${targetFile}`
+          });
+        }
+      }
+    }
+
+    return issues;
+  }
+
+  private batchTargetPath(targetFile: string): string {
+    const targetPath = path.resolve(this.rootDir, ...targetFile.split(/[\\/]/));
+    this.assertManagedDirectory(targetPath);
+    return targetPath;
   }
 
   deleteActionRun(runId: string): boolean {

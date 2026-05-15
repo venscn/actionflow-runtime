@@ -122,7 +122,7 @@ Current runtime should not automatically scan `batches/`.
 
 FileStateStore currently exposes `listPendingBatches()`, `listCommittedBatches()`, and `listFailedBatches()` for manual inspection. They read and parse batch manifests without mutating them. They do not automatically recover, roll back writes, or change runtime execution. Invalid or corrupted manifests are reported as errors.
 
-FileStateStore also exposes `checkHealth()` to summarize pending, committed, and failed batch markers. It is read-only and does not repair, recover, roll back writes, delete markers, or move pending batches to failed.
+FileStateStore also exposes `checkHealth()` to summarize pending, committed, and failed batch markers. It can include issue records for pending batches, failed batches, and committed markers whose target files are missing. It is read-only and does not repair, recover, roll back writes, delete markers, or move pending batches to failed.
 
 If a pending batch is found, the runtime should not automatically recover it. Tooling can report incomplete batches and let the host or user decide what to do.
 
@@ -174,7 +174,7 @@ Phase 7:
 
 - Add store health inspection helper.
 
-Status: partially implemented. FileStateStore exposes `checkHealth()` to summarize pending, committed, and failed batch marker counts and return a coarse status. It does not validate full data consistency, repair partial writes, roll back, recover, or delete markers.
+Status: partially implemented. FileStateStore exposes `checkHealth()` to summarize pending, committed, and failed batch marker counts, return a coarse status, and report issue records for pending batches, failed batches, and missing committed target files. It does not validate full data consistency, repair partial writes, roll back, recover, or delete markers.
 
 ## 11. Tests Needed
 
@@ -192,6 +192,6 @@ Future tests should cover:
 - Should pending batches automatically move to failed?
 - Is `fsync` needed?
 - Is a lock file needed?
-- Is a health check API needed?
+- Should `checkHealth` be extended with deeper file consistency validation?
 - Is a batch cleanup API needed?
 - Should all records in a batch share a `savedAt` timestamp?
