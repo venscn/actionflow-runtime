@@ -32,6 +32,7 @@ Current implemented pieces:
 - Processed Event ID design.
 - Processed Event ID store types.
 - MemoryStateStore processed event id.
+- FileStateStore processed event id.
 - Restore done run example in `examples/file-state-store-restore.ts`.
 - Restore yielded sliceable run plus explicit tick example in `examples/file-state-store-resume.ts`.
 - `collect-check` runs all `example:*` npm scripts.
@@ -41,7 +42,6 @@ Current implemented pieces:
 The following are not implemented:
 
 - Durable recovery guarantee.
-- FileStateStore processed event id.
 - Runtime processed event integration.
 - `recoverWaitingRuns`.
 - Waiting action wakeup.
@@ -104,10 +104,9 @@ Known risks:
 
 Prefer not to expand FileStateStore broadly yet. The recommended sequence is:
 
-- Phase A: FileStateStore processed event id.
-- Phase B: Runtime processed event integration.
-- Phase C: `recoverWaitingRuns` match/preview integration.
-- Phase D: Explicit tick recovery implementation.
+- Phase A: Runtime processed event integration.
+- Phase B: `recoverWaitingRuns` match/preview integration.
+- Phase C: Explicit tick recovery implementation.
 
 The reason is that single-record local persistence is already enough for development and inspection. The next real risks are FlowRun / ActionRun consistency and waiting recovery, not adding more storage backends.
 
@@ -115,8 +114,7 @@ The reason is that single-record local persistence is already enough for develop
 
 Two reasonable next implementation candidates:
 
-- FileStateStore processed event id.
 - Runtime processed event integration.
 - `recoverWaitingRuns` match/preview integration.
 
-Recommendation: start with FileStateStore processed event id. MemoryStateStore storage now exists, but FileStateStore storage, runtime integration, `recoverWaitingRuns`, automatic wakeup, exactly-once behavior, and durable recovery are still not implemented.
+Recommendation: start with Runtime processed event integration. MemoryStateStore and FileStateStore storage now exist, but runtime integration, `recoverWaitingRuns`, automatic wakeup, exactly-once behavior, and durable recovery are still not implemented.

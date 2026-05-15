@@ -11,10 +11,11 @@ import {
   parseEnvelope,
   safeFileName,
   supportsRunBatch,
+  supportsProcessedEvents,
   supportsWaitingIndex
 } from "../src/index.js";
 import type { FileStoreBatchManifest } from "../src/index.js";
-import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowRunRecord } from "../src/index.js";
+import type { ActionDefinition, ActionRunRecord, FlowDefinition, FlowRunRecord, ProcessedEventRecord } from "../src/index.js";
 
 describe("FileStateStore", () => {
   const tempDirs: string[] = [];
@@ -243,6 +244,229 @@ describe("FileStateStore", () => {
 
   it("supportsWaitingIndex returns true for FileStateStore", () => {
     expect(supportsWaitingIndex(createStore())).toBe(true);
+  });
+
+  it("supportsProcessedEvents returns true for FileStateStore", () => {
+    expect(supportsProcessedEvents(createStore())).toBe(true);
+  });
+
+  it("saveProcessedEvent stores and reads a processed event record", () => {
+    const store = createStore();
+    const record = createProcessedEventRecord("started", "event-1");
+
+    store.saveProcessedEvent(record);
+
+    expect(store.getProcessedEvent("event-1")).toEqual(record);
+  });
+
+  it("saveProcessedEvent overwrites same eventId", () => {
+    const store = createStore();
+    const first = createProcessedEventRecord("started", "event-1");
+    const second = {
+      ...createProcessedEventRecord("completed", "event-1"),
+      attemptCount: 2
+    };
+
+    store.saveProcessedEvent(first);
+    store.saveProcessedEvent(second);
+
+    expect(store.getProcessedEvent("event-1")).toEqual(second);
+    expect(store.listProcessedEvents()).toHaveLength(1);
+  });
+
+  it("listProcessedEvents returns an empty list when processed-events directory is missing", () => {
+    const store = createStore();
+
+    expect(store.listProcessedEvents()).toEqual([]);
+  });
+
+  it("listProcessedEvents returns deterministic eventId-sorted records", () => {
+    const store = createStore();
+
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-c"));
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-a"));
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-b"));
+
+    expect(store.listProcessedEvents().map((record) => record.eventId)).toEqual(["event-a", "event-b", "event-c"]);
+  });
+
+  it("deleteProcessedEvent removes a record", () => {
+    const store = createStore();
+
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-1"));
+
+    expect(store.deleteProcessedEvent("event-1")).toBe(true);
+    expect(store.deleteProcessedEvent("event-1")).toBe(false);
+    expect(store.getProcessedEvent("event-1")).toBeUndefined();
+  });
+
+  it("clear removes processed event records but keeps rootDir", () => {
+    const { rootDir, store } = createStoreWithRoot();
+
+    store.saveProcessedEvent(createProcessedEventRecord("started", "event-1"));
+    store.clear();
+
+    expect(existsSync(rootDir)).toBe(true);
+    expect(store.listProcessedEvents()).toEqual([]);
+  });
+
+  it("saveProcessedEvent validates eventId", () => {
+    const store = createStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), eventId: "" })).toThrow(
+      "eventId is required"
+    );
+  });
+
+  it("saveProcessedEvent validates eventName", () => {
+    const store = createStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), eventName: "" })).toThrow(
+      "eventName is required"
+    );
+  });
+
+  it("saveProcessedEvent validates status", () => {
+    const store = createStore();
+
+    expect(() =>
+      store.saveProcessedEvent({ ...createProcessedEventRecord("started"), status: "invalid" as never })
+    ).toThrow("Invalid processed event status");
+  });
+
+  it("saveProcessedEvent validates firstSeenAt and updatedAt", () => {
+    const store = createStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), firstSeenAt: "" })).toThrow(
+      "firstSeenAt is required"
+    );
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), updatedAt: "" })).toThrow(
+      "updatedAt is required"
+    );
+  });
+
+  it("saveProcessedEvent validates attemptCount", () => {
+    const store = createStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), attemptCount: -1 })).toThrow(
+      "attemptCount must be a non-negative integer"
+    );
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), attemptCount: 1.5 })).toThrow(
+      "attemptCount must be a non-negative integer"
+    );
+  });
+
+  it("saveProcessedEvent validates matchedRunIds", () => {
+    const store = createStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("started"), matchedRunIds: [""] })).toThrow(
+      "matchedRunIds must be an array of non-empty strings"
+    );
+    expect(() =>
+      store.saveProcessedEvent({ ...createProcessedEventRecord("started"), matchedRunIds: "flow-run-1:node-1" as never })
+    ).toThrow("matchedRunIds must be an array of non-empty strings");
+  });
+
+  it("saveProcessedEvent validates recoveredFlowRunIds", () => {
+    const store = createStore();
+
+    expect(() =>
+      store.saveProcessedEvent({ ...createProcessedEventRecord("started"), recoveredFlowRunIds: [""] })
+    ).toThrow("recoveredFlowRunIds must be an array of non-empty strings");
+    expect(() =>
+      store.saveProcessedEvent({ ...createProcessedEventRecord("started"), recoveredFlowRunIds: "flow-run-1" as never })
+    ).toThrow("recoveredFlowRunIds must be an array of non-empty strings");
+  });
+
+  it("saveProcessedEvent validates optional error field", () => {
+    const store = createStore();
+
+    expect(() => store.saveProcessedEvent({ ...createProcessedEventRecord("failed"), error: 1 as never })).toThrow(
+      "error must be a string"
+    );
+  });
+
+  it("getProcessedEvent throws on corrupted JSON", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeProcessedEventFile(rootDir, "event-1", "{");
+
+    expect(() => store.getProcessedEvent("event-1")).toThrow();
+  });
+
+  it("getProcessedEvent throws on invalid processed event record", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeProcessedEventFile(
+      rootDir,
+      "event-1",
+      JSON.stringify({
+        eventId: "event-1",
+        eventName: "user.created",
+        status: "invalid",
+        firstSeenAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        attemptCount: 1,
+        matchedRunIds: [],
+        recoveredFlowRunIds: []
+      })
+    );
+
+    expect(() => store.getProcessedEvent("event-1")).toThrow("Invalid processed event status");
+  });
+
+  it("listProcessedEvents throws on corrupted JSON", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeProcessedEventFile(rootDir, "event-1", "{");
+
+    expect(() => store.listProcessedEvents()).toThrow();
+  });
+
+  it("listProcessedEvents throws on invalid processed event record", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    writeProcessedEventFile(
+      rootDir,
+      "event-1",
+      JSON.stringify({
+        eventId: "event-1",
+        eventName: "user.created",
+        status: "started",
+        firstSeenAt: "",
+        updatedAt: new Date().toISOString(),
+        attemptCount: 1,
+        matchedRunIds: [],
+        recoveredFlowRunIds: []
+      })
+    );
+
+    expect(() => store.listProcessedEvents()).toThrow("firstSeenAt is required");
+  });
+
+  it("unsafe eventId is saved with safe file name and can be read and deleted", () => {
+    const { rootDir, store } = createStoreWithRoot();
+    const unsafeEventId = 'event/a\\b:c*d?e"f<g>h|i';
+    const record = createProcessedEventRecord("started", unsafeEventId);
+
+    store.saveProcessedEvent(record);
+
+    expect(existsSync(path.join(rootDir, "processed-events", `${safeFileName(unsafeEventId)}.json`))).toBe(true);
+    expect(store.getProcessedEvent(unsafeEventId)).toEqual(record);
+    expect(store.deleteProcessedEvent(unsafeEventId)).toBe(true);
+    expect(store.getProcessedEvent(unsafeEventId)).toBeUndefined();
+  });
+
+  it("processed event storage does not affect matchWaitingRuns or previewEventRecovery", () => {
+    const store = createStore();
+    const runtime = new ActionFlowRuntime({ stateStore: store });
+
+    store.saveProcessedEvent(createProcessedEventRecord("completed", "event-1"));
+    store.saveFlowRun(createFlowRun("flow-run-1", "waiting"));
+    store.indexWaitingActionRun(createWaitingActionRun("flow-run-1:node-1", "user.created"));
+
+    expect(runtime.matchWaitingRuns({ id: "event-1", name: "user.created" }).matched).toHaveLength(1);
+    expect(runtime.previewEventRecovery({ id: "event-1", name: "user.created" }).recovered).toHaveLength(1);
+    expect(store.getProcessedEvent("event-1")).toMatchObject({
+      eventId: "event-1",
+      status: "completed"
+    });
   });
 
   it("indexWaitingActionRun writes a waiting index entry", () => {
@@ -1389,6 +1613,21 @@ function createFlowRun(id: string, status: FlowRunRecord["status"]): FlowRunReco
   };
 }
 
+function createProcessedEventRecord(status: ProcessedEventRecord["status"], eventId = `event-${status}`): ProcessedEventRecord {
+  const now = new Date().toISOString();
+
+  return {
+    eventId,
+    eventName: "user.created",
+    status,
+    firstSeenAt: now,
+    updatedAt: now,
+    attemptCount: 1,
+    matchedRunIds: ["flow-run-1:node-1"],
+    recoveredFlowRunIds: ["flow-run-1"]
+  };
+}
+
 function createWaitingAsyncAction(
   id: string,
   reason: string
@@ -1443,6 +1682,12 @@ function writeWaitingRunFile(rootDir: string, runId: string, content: string): v
   const dir = path.join(rootDir, "waiting-runs");
   mkdirSync(dir, { recursive: true });
   writeFileSync(path.join(dir, `${safeFileName(runId)}.json`), content, "utf8");
+}
+
+function writeProcessedEventFile(rootDir: string, eventId: string, content: string): void {
+  const dir = path.join(rootDir, "processed-events");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, `${safeFileName(eventId)}.json`), content, "utf8");
 }
 
 function writeFailedBatchFile(rootDir: string, fileName: string, content: string): void {

@@ -85,13 +85,13 @@ interface ProcessedEventStore extends StateStore {
 }
 ```
 
-`ProcessedEventRecord`, `ProcessedEventStore`, and `supportsProcessedEvents(store)` are implemented. MemoryStateStore processed event id storage is implemented.
+`ProcessedEventRecord`, `ProcessedEventStore`, and `supportsProcessedEvents(store)` are implemented. MemoryStateStore and FileStateStore processed event id storage are implemented.
 
 This extension is optional and does not enter the base `StateStore` interface. Runtime can detect support. Stores that do not support it keep current behavior.
 
-FileStateStore processed event storage is not implemented. Runtime integration is not implemented. `recoverWaitingRuns` is not implemented. Exactly-once behavior is not implemented.
+Runtime integration is not implemented. `recoverWaitingRuns` is not implemented. Exactly-once behavior is not implemented. Durable recovery is not implemented.
 
-MemoryStateStore uses in-memory records. Future FileStateStore support can write `processed-events/{safeEventId}.json`.
+MemoryStateStore uses in-memory records. FileStateStore writes local JSON records under `processed-events/{safeEventId}.json`.
 
 ## 7. Status Semantics
 
@@ -156,7 +156,7 @@ Current `matchWaitingRuns` and `previewEventRecovery` should not write processed
 
 ## 10. FileStateStore Layout
 
-Candidate layout:
+Current layout:
 
 ```text
 .actionflow/
@@ -168,8 +168,8 @@ Rules:
 
 - Use `safeFileName`.
 - Use JSON-compatible checks.
-- Whether corrupted records throw or become health issues should be decided later.
-- Whether `clear()` removes `processed-events` must be defined during implementation.
+- Corrupted or invalid records throw during reads and lists.
+- `clear()` removes `processed-events`.
 - FileStateStore does not provide multi-process safety.
 - FileStateStore does not guarantee exactly-once behavior.
 
@@ -232,13 +232,17 @@ Implemented tests currently cover:
 - MemoryStateStore validates recoveredFlowRunIds.
 - MemoryStateStore validates optional error field.
 - supportsProcessedEvents detects MemoryStateStore and compatible stores.
-
-Remaining future tests should cover:
-
 - FileStateStore writes processed event JSON.
 - FileStateStore lists processed events deterministically.
 - FileStateStore rejects invalid processed event JSON.
 - FileStateStore clear removes processed events.
+- FileStateStore deletes processed event records.
+- FileStateStore supports unsafe event ids through safe file names.
+- FileStateStore processed event storage does not affect matchWaitingRuns or previewEventRecovery.
+- supportsProcessedEvents detects FileStateStore.
+
+Remaining future tests should cover:
+
 - Runtime processed event integration does not affect matchWaitingRuns or previewEventRecovery.
 - recoverWaitingRuns records started / completed.
 - Failed recovery records failed.

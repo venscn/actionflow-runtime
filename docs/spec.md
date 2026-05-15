@@ -37,7 +37,7 @@ ActionFlow Runtime is not a distributed workflow system. The current implementat
 - **SliceScheduler**: the component that advances ready sliceable ActionRuns within frame and slice budgets.
 - **FlowEngine**: the component that applies Flow semantics and delegates action execution to ActionRun helpers and SliceScheduler.
 - **ActionFlowRuntime**: a lightweight facade that wires registries, store, and FlowEngine together.
-- **StateStore**: storage abstraction for run records. Current implementations include MemoryStateStore and FileStateStore. FileStateStore persists ActionRun / FlowRun records only. `BatchStateStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore. `WaitingIndexStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore. `ProcessedEventStore` is an optional extension currently implemented by MemoryStateStore. FileStateStore processed event storage and runtime integration are not implemented yet.
+- **StateStore**: storage abstraction for run records. Current implementations include MemoryStateStore and FileStateStore. FileStateStore persists ActionRun / FlowRun records only. `BatchStateStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore. `WaitingIndexStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore. `ProcessedEventStore` is an optional extension currently implemented by MemoryStateStore and FileStateStore. Runtime processed event integration is not implemented yet.
 - **Package Manifest**: a descriptive package metadata object for actions, flows, rules, config schema, and permission labels. Current support is validation and optional action/flow registry consistency checks.
 - **Event Trigger**: a descriptive rule that maps an event name to a flow id. Current support is validation and in-memory definition management only.
 
@@ -298,8 +298,8 @@ A parallel node has `branches`.
 - It defines `ProcessedEventRecord` with `started`, `completed`, and `failed` statuses.
 - It defines methods for getting, saving, listing, and deleting processed event records.
 - `supportsProcessedEvents(store)` detects the optional interface.
-- It is currently implemented by MemoryStateStore.
-- FileStateStore processed event id storage is not implemented.
+- It is currently implemented by MemoryStateStore and FileStateStore.
+- FileStateStore stores processed event records under `processed-events` JSON files.
 - Runtime does not use processed event records yet.
 - Exactly-once and durable event recovery are not implemented.
 
@@ -311,7 +311,7 @@ The following are not implemented:
 - FileStateStore exists for local ActionRun / FlowRun JSON persistence, but durable recovery, database stores, FlowDefinition persistence, and EventTrigger persistence are not implemented.
 - FileStateStore pending manifests, staging record writes, committed markers, failed markers, and health checks exist, but rollback and atomic batch recovery are not implemented.
 - WaitingIndexStore exists for MemoryStateStore, FileStateStore, Runtime tick integration, read-only `matchWaitingRuns`, and read-only `previewEventRecovery`, but automatic wakeup, `recoverWaitingRuns`, durable recovery, and event trigger execution are not implemented.
-- ProcessedEventStore is implemented by MemoryStateStore, but FileStateStore implementation, runtime integration, exactly-once behavior, and durable event recovery are not implemented.
+- ProcessedEventStore is implemented by MemoryStateStore and FileStateStore, but runtime integration, exactly-once behavior, and durable event recovery are not implemented.
 - Package Manifest support is limited to a description format, lightweight validator, and optional registry consistency check; it does not load external code, resolve dependencies, or execute permissions.
 - There is no permission model.
 - There is no sandbox.

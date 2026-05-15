@@ -12,6 +12,8 @@ import path from "node:path";
 
 import type {
   BatchStateStore,
+  ProcessedEventRecord,
+  ProcessedEventStore,
   StateStoreRunBatch,
   WaitingIndexStore,
   WaitingRunFilter,
@@ -69,11 +71,12 @@ export interface FileStateStoreHealth {
   };
 }
 
-export class FileStateStore implements BatchStateStore, WaitingIndexStore {
+export class FileStateStore implements BatchStateStore, WaitingIndexStore, ProcessedEventStore {
   private readonly rootDir: string;
   private readonly actionRunsDir: string;
   private readonly flowRunsDir: string;
   private readonly waitingRunsDir: string;
+  private readonly processedEventsDir: string;
   private readonly batchesDir: string;
   private readonly pendingBatchesDir: string;
   private readonly committedBatchesDir: string;
@@ -88,6 +91,7 @@ export class FileStateStore implements BatchStateStore, WaitingIndexStore {
     this.actionRunsDir = path.join(this.rootDir, "action-runs");
     this.flowRunsDir = path.join(this.rootDir, "flow-runs");
     this.waitingRunsDir = path.join(this.rootDir, "waiting-runs");
+    this.processedEventsDir = path.join(this.rootDir, "processed-events");
     this.batchesDir = path.join(this.rootDir, "batches");
     this.pendingBatchesDir = path.join(this.batchesDir, "pending");
     this.committedBatchesDir = path.join(this.batchesDir, "committed");
@@ -235,6 +239,46 @@ export class FileStateStore implements BatchStateStore, WaitingIndexStore {
       .sort((left, right) => left.runId.localeCompare(right.runId));
   }
 
+  getProcessedEvent(eventId: string): ProcessedEventRecord | undefined {
+    const filePath = this.processedEventPath(eventId);
+
+    if (!existsSync(filePath)) {
+      return undefined;
+    }
+
+    return parseProcessedEventRecord(JSON.parse(readFileSync(filePath, "utf8")) as unknown);
+  }
+
+  saveProcessedEvent(record: ProcessedEventRecord): void {
+    validateProcessedEventRecord(record);
+    assertJsonSerializable(record);
+    this.writeJsonFile(this.processedEventPath(record.eventId), record);
+  }
+
+  listProcessedEvents(): readonly ProcessedEventRecord[] {
+    this.assertManagedDirectory(this.processedEventsDir);
+
+    if (!existsSync(this.processedEventsDir)) {
+      return [];
+    }
+
+    return readdirSync(this.processedEventsDir)
+      .filter((fileName) => fileName.endsWith(".json"))
+      .map((fileName) => parseProcessedEventRecord(JSON.parse(readFileSync(path.join(this.processedEventsDir, fileName), "utf8")) as unknown))
+      .sort((left, right) => left.eventId.localeCompare(right.eventId));
+  }
+
+  deleteProcessedEvent(eventId: string): boolean {
+    const filePath = this.processedEventPath(eventId);
+
+    if (!existsSync(filePath)) {
+      return false;
+    }
+
+    unlinkSync(filePath);
+    return true;
+  }
+
   private collectHealthIssues(
     pendingBatches: readonly FileStateStorePendingBatch[],
     committedBatches: readonly FileStateStoreCommittedBatch[],
@@ -294,6 +338,7 @@ export class FileStateStore implements BatchStateStore, WaitingIndexStore {
     this.clearManagedDirectory(this.actionRunsDir);
     this.clearManagedDirectory(this.flowRunsDir);
     this.clearManagedDirectory(this.waitingRunsDir);
+    this.clearManagedDirectory(this.processedEventsDir);
     this.clearManagedDirectory(this.batchesDir);
   }
 
@@ -397,6 +442,10 @@ export class FileStateStore implements BatchStateStore, WaitingIndexStore {
 
   private waitingRunPath(runId: string): string {
     return this.recordPath(this.waitingRunsDir, runId);
+  }
+
+  private processedEventPath(eventId: string): string {
+    return this.recordPath(this.processedEventsDir, eventId);
   }
 
   private writeJsonFile(targetPath: string, data: unknown): void {
@@ -556,6 +605,63 @@ function parseWaitingRunIndexEntry(raw: unknown): WaitingRunIndexEntry {
   }
 
   return raw as unknown as WaitingRunIndexEntry;
+}
+
+function parseProcessedEventRecord(raw: unknown): ProcessedEventRecord {
+  if (!isPlainObject(raw)) {
+    throw new Error("Invalid processed event record");
+  }
+
+  assertJsonSerializable(raw);
+  validateProcessedEventRecord(raw as unknown as ProcessedEventRecord);
+
+  return raw as unknown as ProcessedEventRecord;
+}
+
+function validateProcessedEventRecord(record: ProcessedEventRecord): void {
+  if (!isNonEmptyString(record.eventId)) {
+    throw new Error("eventId is required");
+  }
+
+  if (!isNonEmptyString(record.eventName)) {
+    throw new Error("eventName is required");
+  }
+
+  if (!isProcessedEventStatus(record.status)) {
+    throw new Error("Invalid processed event status");
+  }
+
+  if (!isNonEmptyString(record.firstSeenAt)) {
+    throw new Error("firstSeenAt is required");
+  }
+
+  if (!isNonEmptyString(record.updatedAt)) {
+    throw new Error("updatedAt is required");
+  }
+
+  if (!Number.isInteger(record.attemptCount) || record.attemptCount < 0) {
+    throw new Error("attemptCount must be a non-negative integer");
+  }
+
+  if (!isNonEmptyStringArray(record.matchedRunIds)) {
+    throw new Error("matchedRunIds must be an array of non-empty strings");
+  }
+
+  if (!isNonEmptyStringArray(record.recoveredFlowRunIds)) {
+    throw new Error("recoveredFlowRunIds must be an array of non-empty strings");
+  }
+
+  if (record.error !== undefined && typeof record.error !== "string") {
+    throw new Error("error must be a string");
+  }
+}
+
+function isProcessedEventStatus(status: unknown): status is ProcessedEventRecord["status"] {
+  return status === "started" || status === "completed" || status === "failed";
+}
+
+function isNonEmptyStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(isNonEmptyString);
 }
 
 function parseFlowRunPrefix(runId: string): { flowRunId: string; nodeId: string } | undefined {
