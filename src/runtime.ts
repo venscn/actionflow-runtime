@@ -178,6 +178,10 @@ export class ActionFlowRuntime {
     };
   }
 
+  recoverWaitingRuns(event: RuntimeEvent): EventRecoveryResult {
+    return this.previewEventRecovery(event);
+  }
+
   createRun(flowId: string, runId: string, version?: string): FlowEngineRunRecord {
     const flow = this.requireFlow(flowId, version);
     const run = this.engine.createRun(runId, flow);

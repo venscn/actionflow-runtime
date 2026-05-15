@@ -4,7 +4,7 @@
 
 Event Recovery will process external `RuntimeEvent` values. `RuntimeEvent` already has an `id`, but the runtime does not currently record which events have been processed.
 
-`matchWaitingRuns` and `previewEventRecovery` are read-only and do not need processed event id storage. A future `recoverWaitingRuns` or `recoverAndTick` API may execute `tick`, and then repeated events could repeat recovery work.
+`matchWaitingRuns`, `previewEventRecovery`, and the current match/preview-only `recoverWaitingRuns` are read-only and do not need processed event id storage. A future processed-event-aware `recoverWaitingRuns` policy or `recoverAndTick` API may execute `tick`, and then repeated events could repeat recovery work.
 
 Without processed event id records, the runtime cannot distinguish a first event, a duplicate event, or a retry after failure.
 
@@ -19,7 +19,7 @@ Processed Event ID should:
 - Remain an optional StateStore extension.
 - Avoid claiming exactly-once behavior.
 - Avoid automatically dropping events unless the host explicitly chooses a policy.
-- Leave current `matchWaitingRuns` and `previewEventRecovery` behavior unchanged.
+- Leave current `matchWaitingRuns`, `previewEventRecovery`, and match/preview-only `recoverWaitingRuns` behavior unchanged.
 
 ## 3. Non-Goals
 
@@ -41,11 +41,11 @@ Current implementation:
 - `RuntimeEvent` has `id` and `name`.
 - `matchWaitingRuns(event)` matches by `event.name` / `waitReason`.
 - `previewEventRecovery(event)` restores matched FlowRuns for preview.
+- `recoverWaitingRuns(event)` currently delegates to preview behavior.
 - ActionFlowRuntime exposes explicit processed event accessors.
-- Neither method mutates event state.
-- Neither method records processed ids.
-- Neither method ticks.
-- `recoverWaitingRuns` is not implemented.
+- These match/preview methods do not mutate event state.
+- These match/preview methods do not record processed ids.
+- These match/preview methods do not tick.
 
 ## 5. Proposed Data Model
 
@@ -90,7 +90,7 @@ interface ProcessedEventStore extends StateStore {
 
 This extension is optional and does not enter the base `StateStore` interface. Runtime can detect support. Stores that do not support it keep current behavior.
 
-Runtime explicit processed event store accessors are implemented. `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. `recoverWaitingRuns` is not implemented. Exactly-once behavior is not implemented. Durable recovery is not implemented.
+Runtime explicit processed event store accessors are implemented. `matchWaitingRuns`, `previewEventRecovery`, and the current match/preview-only `recoverWaitingRuns` do not write processed event records. Processed event policy wiring remains future work. Exactly-once behavior is not implemented. Durable recovery is not implemented.
 
 MemoryStateStore uses in-memory records. FileStateStore writes local JSON records under `processed-events/{safeEventId}.json`.
 
@@ -150,9 +150,9 @@ Current Runtime integration exposes explicit processed event accessors when the 
 - `listProcessedEvents()`
 - `deleteProcessedEvent(eventId)`
 
-These accessors do not imply automatic idempotency. They do not change `matchWaitingRuns` or `previewEventRecovery`.
+These accessors do not imply automatic idempotency. They do not change `matchWaitingRuns`, `previewEventRecovery`, or the current match/preview-only `recoverWaitingRuns`.
 
-A future `recoverWaitingRuns` can:
+A future processed-event-aware `recoverWaitingRuns` policy can:
 
 1. Validate `RuntimeEvent`.
 2. Check processed event store if supported.
@@ -162,7 +162,7 @@ A future `recoverWaitingRuns` can:
 6. Save `completed` or `failed` record.
 7. Return `EventRecoveryResult` with skip reasons.
 
-Current `matchWaitingRuns` and `previewEventRecovery` do not write processed event records. Processed event id records should be used for recovery attempts, not pure read-only matching.
+Current `matchWaitingRuns`, `previewEventRecovery`, and match/preview-only `recoverWaitingRuns` do not write processed event records. Processed event id records should be used for future recovery attempts, not pure read-only matching.
 
 ## 10. FileStateStore Layout
 

@@ -2,7 +2,7 @@
 
 ## 1. Problem
 
-`matchWaitingRuns` can find waiting entries. `previewEventRecovery` can restore FlowRun records for preview.
+`matchWaitingRuns` can find waiting entries. `previewEventRecovery` can restore FlowRun records for preview. `recoverWaitingRuns` currently returns the same match/preview-only recovery result.
 
 Real recovery still needs policy decisions: whether to tick, when to tick, which runs to tick, and how to handle errors. If runtime automatically ticks after every event, it may repeat execution, run without registered actions or flows, or resume the wrong run for a loosely matched event.
 
@@ -15,9 +15,13 @@ Current implemented capabilities:
 - Waiting index can find waiting ActionRuns by `waitReason`.
 - `matchWaitingRuns(event)` returns matched entries only.
 - `previewEventRecovery(event)` restores matching FlowRun records for preview.
+- `recoverWaitingRuns(event)` follows preview-only behavior.
 - `previewEventRecovery` does not tick.
+- `recoverWaitingRuns` does not tick.
 - `previewEventRecovery` does not mutate waiting index.
+- `recoverWaitingRuns` does not mutate waiting index.
 - `previewEventRecovery` does not execute triggers.
+- `recoverWaitingRuns` does not execute triggers.
 - `restoreRun` requires saved FlowRun and matching ActionRuns.
 - `tick` still requires registered flow and actions.
 
@@ -55,6 +59,7 @@ Current behavior:
 - Match entries.
 - Restore FlowRun preview.
 - Do not tick.
+- `recoverWaitingRuns(event)` follows this no-tick behavior today.
 - Host decides the next action.
 
 Advantages:
@@ -91,6 +96,8 @@ Candidate API shape:
 ```ts
 recoverWaitingRuns(event, { tick: true })
 ```
+
+This option is not implemented. The current `recoverWaitingRuns(event)` API has no `tick` option and remains preview-only.
 
 Possible flow:
 
@@ -174,6 +181,7 @@ Rules:
 - `dryRun` is equivalent to preview.
 - `flowId` can default to `restoredRun.flowId`.
 - `flowVersion` needs a separate policy.
+- Processed event policy wiring is not implemented.
 
 ## 8. Safety Rules
 

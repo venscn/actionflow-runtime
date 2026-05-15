@@ -4,9 +4,9 @@
 
 ActionRun can currently enter `waiting` status. Runtime can write waiting ActionRuns into a waiting index, and both MemoryStateStore and FileStateStore can query that index.
 
-The runtime now has read-only event recovery helpers: `matchWaitingRuns(event)` can match an external event name to waiting index entries, and `previewEventRecovery(event)` can preview stored FlowRun records for matched entries. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
+The runtime now has read-only event recovery helpers: `matchWaitingRuns(event)` can match an external event name to waiting index entries, `previewEventRecovery(event)` can preview stored FlowRun records for matched entries, and `recoverWaitingRuns(event)` currently returns the same match/preview-only recovery result. `EventTriggerRegistry` currently manages descriptive trigger definitions only. It does not automatically start flows or wake waiting actions.
 
-`ActionFlowRuntime.restoreRun` can reload run records. `previewEventRecovery` may call `restoreRun` for preview, but it does not call `tick`. As a result, waiting actions currently require the host to explicitly decide what to do after a preview, and they cannot recover from an event automatically.
+`ActionFlowRuntime.restoreRun` can reload run records. `previewEventRecovery` and the current `recoverWaitingRuns` may call `restoreRun` for preview, but they do not call `tick`. As a result, waiting actions currently require the host to explicitly decide what to do after a preview, and they cannot recover from an event automatically.
 
 ## 2. Goals
 
@@ -47,6 +47,7 @@ Current implemented pieces:
 - FileStateStore waiting index.
 - `ActionFlowRuntime.matchWaitingRuns(event)` read-only matching.
 - `ActionFlowRuntime.previewEventRecovery(event)` read-only restore preview.
+- `ActionFlowRuntime.recoverWaitingRuns(event)` match/preview-only recovery result integration.
 - Explicit `ActionFlowRuntime` processed event record accessors when the configured store supports `ProcessedEventStore`.
 - `EventTriggerRegistry` definitions.
 - FileStateStore local persistence.
@@ -106,10 +107,10 @@ interface EventRecoverySkip {
 }
 ```
 
-Candidate method:
+Implemented match/preview-only method:
 
 ```ts
-recoverWaitingRuns(event: RuntimeEvent, options?: EventRecoveryOptions): Promise<EventRecoveryResult>
+recoverWaitingRuns(event: RuntimeEvent): EventRecoveryResult
 ```
 
 The host calls this explicitly. Runtime does not listen to external events.
@@ -119,6 +120,8 @@ The implemented `matchWaitingRuns(event)` API queries the waiting index by `even
 The implemented `previewEventRecovery(event)` API queries the waiting index and attempts `restoreRun(entry.flowRunId)` for matched entries that have a `flowRunId`. It returns restored records for preview only. It does not call `tick`, does not wake actions, does not execute triggers, does not mutate the waiting index, does not guarantee recovery, and does not implement exactly-once behavior.
 
 If an entry has no `flowRunId`, preview records a skipped entry. If `restoreRun` fails, preview records a skipped entry with the error message.
+
+The implemented `recoverWaitingRuns(event)` API currently delegates to `previewEventRecovery(event)`. It returns match/preview recovery results only. It does not call `tick`, does not wake actions, does not execute triggers, does not write processed event records, does not read processed event records as a skip policy, and does not implement exactly-once behavior.
 
 ## 8. Recovery Strategy Options
 
@@ -136,7 +139,7 @@ If an entry has no `flowRunId`, preview records a skipped entry. If `restoreRun`
 - Keeps control with the host.
 - Requires the host to know flow id, version, and actions.
 
-See [Event Recovery Resume Policy](event-recovery-resume-policy.md) for the explicit resume/tick strategy. The policy is documented, but `recoverWaitingRuns` and automatic wakeup are not implemented.
+See [Event Recovery Resume Policy](event-recovery-resume-policy.md) for the explicit resume/tick strategy. The current `recoverWaitingRuns` API is match/preview-only; explicit tick recovery and automatic wakeup are not implemented.
 
 ### Strategy C: Wake token / state mutation
 
@@ -174,7 +177,7 @@ Candidate future strategy:
 - Do not claim exactly-once delivery in the first version.
 - Return `matched` and `skipped` records so the API does not pretend recovery succeeded.
 
-See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. These accessors do not imply automatic idempotency. `matchWaitingRuns` and `previewEventRecovery` still do not write processed event records, and exactly-once behavior is not implemented.
+See [Processed Event ID Design](processed-event-id-design.md) for the processed event id index and explicit runtime accessors. These accessors do not imply automatic idempotency. `matchWaitingRuns`, `previewEventRecovery`, and the current `recoverWaitingRuns` do not write processed event records, and exactly-once behavior is not implemented.
 
 ## 11. Error Handling
 
@@ -224,7 +227,7 @@ Phase 3:
 
 Phase 4:
 
-- Add `recoverWaitingRuns` Strategy A: match and report only. Not implemented. Current `matchWaitingRuns` only matches and does not recover.
+- Add `recoverWaitingRuns` Strategy A as a match/preview-only API. Implemented.
 
 Phase 5:
 
@@ -260,6 +263,10 @@ Implemented tests currently cover:
 - `previewEventRecovery` skips missing `flowRunId` and missing FlowRun records.
 - `previewEventRecovery` deduplicates restored FlowRun records.
 - `previewEventRecovery` does not tick, mutate waiting index, or execute triggers.
+- `recoverWaitingRuns` returns match/preview recovery results.
+- `recoverWaitingRuns` skips missing `flowRunId` and missing FlowRun records.
+- `recoverWaitingRuns` does not tick, mutate waiting index, execute triggers, or write processed event records.
+- `recoverWaitingRuns` validates runtime events and surfaces waiting index errors.
 
 Remaining future tests should cover:
 
